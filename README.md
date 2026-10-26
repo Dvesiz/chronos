@@ -8,7 +8,7 @@
 
 为考研冲刺打造的 Android 时间管理应用 —— 计划、专注、复盘，一个闭环。
 
-[![version](https://img.shields.io/badge/version-2.6.1-FF5A1F?style=flat-square)]()
+[![version](https://img.shields.io/badge/version-2.6.2-FF5A1F?style=flat-square)]()
 [![platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?style=flat-square)]()
 [![deps](https://img.shields.io/badge/deps-zero-0074D9?style=flat-square)]()
 [![build](https://img.shields.io/badge/build-No%20Gradle-24292E?style=flat-square)]()
@@ -100,7 +100,7 @@ cd chronos
 | JDK | 11+ |
 | Android SDK Build-Tools | 35.0.0 |
 | Android SDK Platform | android-35 |
-| zip / keytool | 随 JDK / 系统 |
+| jar / keytool | 随 JDK |
 
 将两者解压至 `/opt/android-sdk/build-tools/35.0.0` 与 `/opt/android-sdk/platforms/android-35`（或修改 `build.sh` 开头的路径变量）。
 
@@ -114,7 +114,7 @@ cd chronos
 
 这个项目刻意做了一些**反潮流**的选择：
 
-- **无 Gradle** —— 整个构建是 60 行的 `build.sh`：`aapt2 → javac → d8 → zipalign → apksigner`，一条链路，全透明
+- **无 Gradle** —— 整个构建是不到 100 行的 `build.sh`：`aapt2 → javac → d8 → zipalign → apksigner`，一条链路，全透明
 - **零依赖** —— 不用 React / Flutter / Compose，原生 `Java + WebView`，APK 不足 100 KB
 - **双保险持久化** —— `localStorage`（前端）与 `SharedPreferences`（原生）互为备份，WebView 存储被清也能恢复（卸载仍会清除，需自行导出）
 - **时间戳驱动计时** —— 计时基于 `Date.now()` 差值而非 setInterval 累加，杀进程也不丢秒数
@@ -145,6 +145,7 @@ chronos/
 
 | 版本 | 内容 |
 |:---|:---|
+| **2.6.2** | 首页布局重排：「今日安排」标题收进卡片，平板两列卡片对齐同一条基线，卡片内边距与间距统一；小屏压缩进度卡，首屏就能看到今日安排。修复 Windows 版 aapt2 把 assets 写成反斜杠、WebView 报 `ERR_FILE_NOT_FOUND` 的问题（改用 jar 打包 assets） |
 | **2.6.1** | 省电与流畅：息屏时暂停前台应用轮询；番茄页 / 统计页改为切页时按需渲染；闹钟按签名去重，不再每次保存全量重建。修复：键盘遮挡弹层表单、返回键直达退出、跨天未停的计时无限累加、跳过 / 删除任务不停表、完成态补时暂停后退回待开始、番茄与任务计时对同一任务重复计时、详情页日均口径不一致 |
 | **2.6.0** | 番茄钟加入极简专注界面（全屏计时 + 激励语）；首页橙色卡片内置换开沉浸开关；首页移除番茄钟迷你卡；导航「专注」更名「番茄钟」 |
 | **2.5.3** | 重绘通知 / 状态栏小图标：环占满 24dp、缺口收到 45°，状态栏下不再糊成一个「C」 |

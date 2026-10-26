@@ -22,10 +22,15 @@ echo "==> link resources"
   -o "$OUT/base.apk" \
   -I "$AJ" \
   --manifest "$SRC/AndroidManifest.xml" \
-  -A "$SRC/assets" \
   -R "$OUT/res/resources.zip" \
   --java "$OUT/gen" \
   --auto-add-overlay
+
+# assets 不用 aapt2 -A：Windows 版 aapt2 会把条目写成 assets/www\xxx，
+# Android 按 assets/www/xxx 找不到文件（表现为 ERR_FILE_NOT_FOUND）。
+# jar 走的始终是 '/'，且会原样保留 resources.arsc 的 STORED 方式。
+echo "==> package assets"
+( cd "$SRC" && jar --update --file "$OUT/base.apk" --no-manifest assets )
 
 echo "==> compile java"
 find "$SRC/java" "$OUT/gen" -name '*.java' > "$OUT/sources.txt"
@@ -42,9 +47,7 @@ find "$OUT/classes" -name '*.class' > "$OUT/classes.txt"
 "$BT/d8" --release --min-api 26 --lib "$AJ" --output "$OUT/dex" @"$OUT/classes.txt"
 
 echo "==> package dex"
-cd "$OUT/dex"
-zip -q -X "$OUT/base.apk" classes.dex
-cd "$ROOT"
+( cd "$OUT/dex" && jar --update --file "$OUT/base.apk" --no-manifest classes.dex )
 
 echo "==> zipalign"
 "$BT/zipalign" -f -p 4 "$OUT/base.apk" "$OUT/aligned.apk"

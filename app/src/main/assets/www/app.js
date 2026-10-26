@@ -348,6 +348,8 @@ function renderHome() {
   const actual = tasks.reduce((a, t) => a + taskSeconds(t), 0);
   $('#planText').textContent = hText(planned);
   $('#actualText').textContent = hText(actual);
+  const scheduleMeta = $('#scheduleMeta');
+  if (scheduleMeta) scheduleMeta.textContent = `${total} 个时段 · ${hText(planned)}`;
 
   const circumference = 2 * Math.PI * 51;
   const ring = $('#ringFg');
@@ -470,6 +472,11 @@ function renderTimeline() {
   if (!rec) return;
   const info = currentInfo(rec);
   const tasks = (rec.tasks || []).slice().sort((a, b) => a.start - b.start);
+
+  if (!tasks.length) {
+    wrap.innerHTML = '<div class="empty-state">今天还没有安排。<br>点右上角「编辑计划」添加时段。</div>';
+    return;
+  }
 
   wrap.innerHTML = tasks.map((t, i) => {
     const isNow = info.task && info.task.id === t.id && (info.mode === 'active' || info.mode === 'doing');

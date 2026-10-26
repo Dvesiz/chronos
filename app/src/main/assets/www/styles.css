@@ -39,6 +39,10 @@
   --ease: cubic-bezier(.32, .72, 0, 1);
   --spring: cubic-bezier(.34, 1.42, .64, 1);
   --maxw: 1160px;
+
+  /* 首页统一的卡片内边距与卡片间距：所有卡片/行共用，保证左边缘与节奏一致 */
+  --pad-card: 20px;
+  --gap-card: 16px;
 }
 
 [data-theme="dark"] {
@@ -154,7 +158,7 @@ body:not(.motion) .pages { transition: none; }
 .live-clock { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 .date-line {
-  margin-top: 22px;
+  margin-top: 18px;
   display: flex; align-items: center; gap: 12px;
   font-size: 13px; font-weight: 600;
   color: var(--ink-3);
@@ -163,8 +167,8 @@ body:not(.motion) .pages { transition: none; }
 .date-line .sep { flex: 1; height: 1px; background: var(--hairline); }
 
 .home-head h1 {
-  margin: 10px 0 22px;
-  font-size: clamp(26px, 6.5vw, 34px);
+  margin: 8px 0 18px;
+  font-size: clamp(24px, 6.4vw, 34px);
   font-weight: 800;
   line-height: 1.3;
   letter-spacing: -.01em;
@@ -225,8 +229,8 @@ body:not(.motion) .pages { transition: none; }
 .ghost-btn:active { transform: scale(.95); }
 
 /* ============ 今日 · 进度卡 ============ */
-.progress-card { display: flex; align-items: center; gap: 24px; padding: 24px; }
-.ring-wrap { position: relative; width: 108px; height: 108px; flex: none; }
+.progress-card { display: flex; align-items: center; gap: 20px; padding: var(--pad-card); }
+.ring-wrap { position: relative; width: 104px; height: 104px; flex: none; }
 .ring { width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring circle { fill: none; }
 .ring-bg { stroke: var(--hairline); stroke-width: 10; }
@@ -247,7 +251,7 @@ body:not(.motion) .pages { transition: none; }
 
 .progress-meta { flex: 1; min-width: 0; }
 .progress-meta .big {
-  font-size: 50px; font-weight: 800; line-height: 1.05; color: var(--ink);
+  font-size: clamp(40px, 12vw, 50px); font-weight: 800; line-height: 1.05; color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 .progress-meta .big i { font-style: normal; font-size: 22px; font-weight: 600; color: var(--ink-3); margin-left: 2px; }
@@ -261,7 +265,7 @@ body:not(.motion) .pages { transition: none; }
 .micro-stats b { display: block; font-size: 17px; font-weight: 700; color: var(--ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
 
 /* ============ 今日 · 当前任务卡 ============ */
-#nowCard, .focus-mini { padding: 20px; }
+#nowCard, .focus-mini { padding: var(--pad-card); }
 .now-card { transition: background .3s var(--ease), box-shadow .3s var(--ease); }
 .now-card.is-lit {
   background: var(--accent);
@@ -320,6 +324,21 @@ body:not(.motion) .pages { transition: none; }
 .now-empty h3 { margin: 10px 0 4px; font-size: 16px; font-weight: 700; color: var(--ink); }
 .now-empty p { margin: 0; font-size: 13px; color: var(--ink-3); line-height: 1.6; }
 
+/* 小屏：进度卡收成一行，别把「今日安排」挤到折叠线以下 */
+@media (max-width: 520px) {
+  .progress-card { padding: 16px; gap: 14px; }
+  .ring-wrap { width: 84px; height: 84px; }
+  .ring-center b { font-size: 24px; }
+  .ring-center span { font-size: 10px; margin-top: 1px; }
+  .progress-meta .big { font-size: 40px; }
+  .progress-meta .big i { font-size: 18px; }
+  .progress-meta .sub { font-size: 11px; margin-top: 2px; }
+  .micro-stats { margin-top: 8px; padding-top: 8px; gap: 18px; }
+  .micro-stats i { font-size: 10px; }
+  .micro-stats b { font-size: 15px; }
+  .schedule-head { padding-top: 14px; padding-bottom: 10px; }
+}
+
 /* ============ 今日 · 专注迷你卡（番茄 + 极度沉浸） ============ */
 .focus-mini { display: flex; flex-direction: column; gap: 14px; }
 .fm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -362,22 +381,23 @@ body:not(.motion) .pages { transition: none; }
 .fm-actions .btn-ghost { flex: 1; }
 
 /* ============ 今日 · 布局 ============ */
-.home-grid, .home-main, .home-side { display: flex; flex-direction: column; gap: 16px; }
+.home-grid, .home-main, .home-side { display: flex; flex-direction: column; gap: var(--gap-card); }
 .home-grid { max-width: var(--maxw); margin: 0 auto; }
 
-.section-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 10px; }
-.section-head h2 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
-.footnote { padding: 0 4px; font-size: 12px; color: var(--ink-3); line-height: 1.7; }
+/* 今日安排：标题与列表同卡，平板下两列卡片从同一条基线开始 */
+.schedule-card { overflow: hidden; padding: 0; }
+.schedule-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 16px var(--pad-card) 12px;
+}
+.schedule-title { min-width: 0; }
+.schedule-head h2 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
+.schedule-meta { margin-top: 2px; font-size: 12px; color: var(--ink-3); }
+.footnote { padding: 10px var(--pad-card) 16px; font-size: 12px; color: var(--ink-3); line-height: 1.7; }
 
 /* ============ 今日 · 时间线（iOS 分组列表） ============ */
-.timeline {
-  background: var(--card);
-  border-radius: var(--r-card);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-[data-theme="dark"] .timeline { border: 1px solid var(--hairline); box-shadow: none; }
-.tl-item { position: relative; display: flex; gap: 14px; padding: 15px 18px; cursor: pointer; transition: background .15s; }
+.timeline { overflow: hidden; }
+.tl-item { position: relative; display: flex; gap: 14px; padding: 15px var(--pad-card); cursor: pointer; transition: background .15s; }
 .tl-item:active { background: var(--card-2); }
 .tl-item + .tl-item { border-top: 1px solid var(--hairline); }
 .tl-time { flex: none; width: 48px; padding-top: 1px; }
@@ -975,8 +995,9 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 }
 
 @media (min-width: 760px) and (min-height: 600px) {
+  :root { --pad-card: 22px; --gap-card: 20px; }
   .scroll { padding: calc(var(--sat) + 28px) 36px calc(var(--sab) + 128px); }
-  .home-grid { display: grid; grid-template-columns: 1.12fr 1fr; gap: 20px; align-items: start; }
+  .home-grid { display: grid; grid-template-columns: 1fr 1.06fr; gap: var(--gap-card); align-items: start; }
   .focus-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 20px; align-items: start; }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   .stats-grid .span-2, .stat-hero { grid-column: span 2; }
@@ -1020,11 +1041,9 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 @media (min-width: 760px) and (min-height: 900px) {
   html, body { font-size: 15px; }
   .home-head h1 { font-size: 40px; }
-  .progress-card { padding: 30px; gap: 30px; }
-  .ring-wrap { width: 124px; height: 124px; }
+  .ring-wrap { width: 120px; height: 120px; }
   .ring-center b { font-size: 32px; }
   .progress-meta .big { font-size: 58px; }
-  #nowCard, .focus-mini { padding: 26px; }
   .now-title { font-size: 30px; }
   .now-timer b { font-size: 48px; }
   .tl-item { padding: 18px 20px; }
