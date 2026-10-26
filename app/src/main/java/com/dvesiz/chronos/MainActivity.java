@@ -351,6 +351,16 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 boolean dark = "dark".equals(theme);
                 web.setBackgroundColor(Color.parseColor(dark ? "#0F0F12" : "#F2F2F4"));
+                if (Build.VERSION.SDK_INT >= 30) {
+                    // API 30+ 用 WindowInsetsController；旧的 systemUiVisibility 在 edge-to-edge 下不生效
+                    android.view.WindowInsetsController c = getWindow().getInsetsController();
+                    if (c != null) {
+                        int mask = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                        c.setSystemBarsAppearance(dark ? 0 : mask, mask);
+                    }
+                    return;
+                }
                 int flags = web.getSystemUiVisibility();
                 if (Build.VERSION.SDK_INT >= 23) {
                     if (dark) flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
@@ -529,6 +539,8 @@ public class MainActivity extends Activity {
                             "if(im&&im.classList.contains('open')){var b=document.getElementById('imExit');if(b)b.click();return '1';}" +
                             "var l=document.getElementById('sheetLayer');" +
                             "if(l&&l.classList.contains('open')){document.getElementById('sheetBackdrop').click();return '1';}" +
+                            // 统计 / 设置页：先回到「今日」，再按一次才退出 app
+                            "if(window.__backToHome)return window.__backToHome();" +
                             "return '0';})()", value -> {
                         if (value == null || value.contains("0")) finish();
                     });

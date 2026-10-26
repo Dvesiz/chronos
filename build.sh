@@ -7,6 +7,9 @@ AJ="${ANDROID_JAR:-$SDK/platforms/android-35/android.jar}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SRC=$ROOT/app/src/main
 OUT=$ROOT/build
+# 版本号只从 manifest 取，避免脚本、界面、README 三处各写一遍
+VERSION=$(awk -F'"' '/android:versionName=/{print $2; exit}' "$SRC/AndroidManifest.xml")
+[ -n "$VERSION" ] || VERSION="dev"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/res" "$OUT/gen" "$OUT/classes" "$OUT/dex"
@@ -26,7 +29,7 @@ echo "==> link resources"
 
 echo "==> compile java"
 find "$SRC/java" "$OUT/gen" -name '*.java' > "$OUT/sources.txt"
-if ! javac --release 11 \
+if ! javac --release 11 -encoding UTF-8 \
   -classpath "$AJ" \
   -d "$OUT/classes" \
   @"$OUT/sources.txt" > "$OUT/javac.log" 2>&1; then
@@ -87,7 +90,7 @@ if [ ! -f "$KS" ]; then
 fi
 "$BT/apksigner" sign --ks "$KS" --ks-key-alias chronos \
   --ks-pass "pass:$KS_PASS" --key-pass "pass:$KPASS" \
-  --out "$OUT/Chronos-2.6.0.apk" "$OUT/aligned.apk"
+  --out "$OUT/Chronos-$VERSION.apk" "$OUT/aligned.apk"
 
-"$BT/apksigner" verify --print-certs "$OUT/Chronos-2.6.0.apk" | head -4
-ls -lh "$OUT/Chronos-2.6.0.apk"
+"$BT/apksigner" verify --print-certs "$OUT/Chronos-$VERSION.apk" | head -4
+ls -lh "$OUT/Chronos-$VERSION.apk"

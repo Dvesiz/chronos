@@ -600,6 +600,7 @@ body:not(.motion) .pages { transition: none; }
 
 /* 行内删除按钮：两次点击确认 */
 .row-del {
+  position: relative;
   width: 34px; height: 34px; flex: none;
   border-radius: 11px;
   background: var(--danger-soft);
@@ -607,6 +608,8 @@ body:not(.motion) .pages { transition: none; }
   display: flex; align-items: center; justify-content: center;
   transition: background .2s, color .2s, transform .15s var(--spring);
 }
+/* 视觉 34px，命中区补到 ~48px */
+.row-del::after { content: ''; position: absolute; inset: -7px; border-radius: 16px; }
 .row-del svg { width: 15px; height: 15px; }
 .row-del:active { transform: scale(.88); }
 .row-del.armed { background: var(--danger); color: #fff; }
@@ -821,7 +824,7 @@ body:not(.motion) .immerse * { animation: none !important; transition: none !imp
   left: 0; right: 0; bottom: 0;
   max-height: 88%;
   overflow-y: auto;
-  padding: 8px 22px calc(var(--sab) + 24px);
+  padding: 8px 22px calc(var(--sab) + 24px + var(--kb));
   background: var(--card);
   border-radius: 26px 26px 0 0;
   box-shadow: var(--shadow-lg);
@@ -839,6 +842,7 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 .sheet-title { margin: 5px 0 0; font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
 .sheet-meta { font-size: 12px; color: var(--ink-3); margin-top: 5px; }
 .sheet-close {
+  position: relative;
   width: 30px; height: 30px; flex: none;
   border-radius: 50%;
   background: var(--bg-2);
@@ -846,6 +850,7 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
   display: flex; align-items: center; justify-content: center;
   transition: transform .15s var(--spring);
 }
+.sheet-close::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
 .sheet-close:active { transform: scale(.9); }
 .sheet-close svg { width: 13px; height: 13px; }
 

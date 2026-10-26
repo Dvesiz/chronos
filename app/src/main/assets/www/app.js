@@ -70,7 +70,9 @@ let state = loadState();
 function loadState() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
-  if (!s || !Array.isArray(s.template) || !s.template.length) {
+  // 只有「完全没有存档」才回退到默认值：模板被删空是合法状态，
+  // 不能因此把 days / 番茄记录等历史数据一起丢掉。
+  if (!s || typeof s !== 'object' || Array.isArray(s)) {
     s = {
       theme: 'light',
       motion: true,
@@ -81,6 +83,7 @@ function loadState() {
       demo: false
     };
   }
+  if (!Array.isArray(s.template)) s.template = defaultTemplate();
   s.days = s.days || {};
   if (typeof s.motion !== 'boolean') s.motion = true;
   if (typeof s.remind !== 'boolean') s.remind = true;
@@ -163,6 +166,29 @@ function ensureToday() {
 const todayRec = () => state.days[dateKey(new Date())];
 const todayKey = () => dateKey(new Date());
 
+/**
+ * 跨天结算：昨天及更早仍在跑的计时按当天 0 点截止并停下。
+ * 否则 focusStart 会一直留着，昨天/前天的「实际投入」随时间无限增长。
+ */
+function settleStaleTimers() {
+  const today = todayKey();
+  let changed = false;
+  Object.keys(state.days).forEach(k => {
+    if (k >= today) return;
+    const rec = state.days[k];
+    const dayEnd = parseKey(k).getTime() + 86400000;
+    (rec.tasks || []).forEach(t => {
+      if (!t.focusStart) return;
+      const end = Math.min(Date.now(), dayEnd);
+      t.focusAcc = (t.focusAcc || 0) + Math.max(0, (end - t.focusStart) / 1000);
+      t.focusStart = null;
+      t.resumeDone = false;
+      changed = true;
+    });
+  });
+  if (changed) save();
+}
+
 function taskSeconds(t) {
   const base = t.focusStart ? t.focusAcc + (Date.now() - t.focusStart) / 1000 : (t.focusAcc || 0);
   return base + (t.pomoAcc || 0);
@@ -191,6 +217,8 @@ function currentInfo(rec) {
 
 /* ---------------- 原生同步 ---------------- */
 let syncTimer = null;
+let lastSyncJson = '';
+let lastExactState = null;
 function syncNative() {
   clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
@@ -217,7 +245,10 @@ function syncNative() {
         }))
       });
     }
-    try { n.schedule(JSON.stringify({ days: days, settings: { remind: state.remind, advance: state.advance } })); } catch (e) {}
+    const payload = JSON.stringify({ days: days, settings: { remind: state.remind, advance: state.advance } });
+    // 时间、状态、提醒设置都没变时跳过：原生侧每次全量重建几十个闹钟，没必要
+    if (payload === lastSyncJson) return;
+    try { n.schedule(payload); lastSyncJson = payload; } catch (e) {}
   }, 500);
 }
 
@@ -271,7 +302,6 @@ function consumeNative() {
   let gaveUp = false;
   try { gaveUp = n.consumeGuardGiveUp ? !!n.consumeGuardGiveUp() : false; } catch (e) {}
   if (gaveUp) {
-    state.pomo.broken = (state.pomo.broken || 0) + 1;
     state.pomo.guard = false;
     // 只有用户自己确认放弃才算结束；这里不额外改动计时，避免静默打断
     if (state.pomo.running) {
@@ -282,7 +312,6 @@ function consumeNative() {
     save(true);
     syncGuard();
     renderFocus();
-    renderPomoMini();
     toast('已退出极度沉浸 · 本轮专注暂停');
   }
 }
@@ -329,7 +358,6 @@ function renderHome() {
 
   renderNow();
   renderTimeline();
-  renderPomoMini();
   updateClocks();
 }
 
@@ -485,9 +513,15 @@ function updateClocks() {
 /* ---------------- 任务操作 ---------------- */
 function startTask(t) {
   if (t.focusStart) return;              // 已经在计时中
+  // 同一个任务不要同时跑番茄钟和任务计时，否则这段时长会被算两遍
+  if (state.pomo.running && state.pomo.phase === 'focus' && state.pomo.taskId === t.id) {
+    pomoPause();
+    toast('已暂停番茄钟 · 改用任务计时');
+  }
   if (t.status === 'done') {
     /* 完成后继续补时：保留已累计的专注时长，在其基础上继续计时 */
     t.status = 'doing';
+    t.resumeDone = true;                 // 暂停时回到「已完成」，不退回「待开始」
     t.focusStart = Date.now();
     t.modified = true;
     save();
@@ -508,7 +542,8 @@ function pauseTask(t) {
     t.focusAcc = (t.focusAcc || 0) + (Date.now() - t.focusStart) / 1000;
     t.focusStart = null;
   }
-  if (t.status === 'doing') t.status = 'todo';
+  if (t.status === 'doing') t.status = t.resumeDone ? 'done' : 'todo';
+  t.resumeDone = false;
   save();
   syncGuard();
   toast('已暂停计时');
@@ -520,6 +555,7 @@ function completeTask(t) {
     t.focusStart = null;
   }
   t.status = 'done';
+  t.resumeDone = false;
   t.actual = (t.focusAcc || 0) + (t.pomoAcc || 0);
   t.modified = true;
   save(true);
@@ -531,6 +567,7 @@ function completeTask(t) {
 
 function undoTask(t) {
   t.status = 'todo';
+  t.resumeDone = false;
   t.modified = true;
   save(true);
   toast('已恢复为待开始');
@@ -557,9 +594,15 @@ function shortenTask(t, minutes) {
 }
 
 function skipTask(t) {
+  if (t.focusStart) {
+    t.focusAcc = (t.focusAcc || 0) + (Date.now() - t.focusStart) / 1000;
+    t.focusStart = null;
+  }
+  t.resumeDone = false;
   t.status = t.status === 'skipped' ? 'todo' : 'skipped';
   t.modified = true;
   save(true);
+  syncGuard();
   toast(t.status === 'skipped' ? '已跳过 · 不再提醒' : '已恢复任务');
 }
 
@@ -574,6 +617,7 @@ function splitTask(t) {
   const b = { ...t, id: t.id + 'b', title: '复盘 · ' + t.title, start: restStart, note: '订正错题 · 归纳复盘', modified: true, parent: t.id, status: 'todo', actual: 0, focusAcc: 0, focusStart: null };
   const idx = rec.tasks.findIndex(x => x.id === t.id);
   rec.tasks.splice(idx, 1, a, b);
+  if (state.pomo.taskId === t.id) state.pomo.taskId = a.id;   // 番茄还绑着这个名字
   save(true);
   toast('已拆分 · 中间留了 10 分钟休息');
   renderHome();
@@ -739,7 +783,7 @@ function openTaskSheet(t, keep) {
         else if (act === 'delete') { armDelete(btn, () => {
           const r = todayRec();
           if (r) r.tasks = r.tasks.filter(x => x.id !== live.id);
-          save(true); closeSheet(); renderHome(); renderStats();
+          save(true); closeSheet(); renderHome(); refreshStats(); syncGuard();
           toast('已从今日计划删除');
         }); }
       });
@@ -826,7 +870,7 @@ function openEditor(t, mode, dateVals) {
       save(true);
       closeSheet();
       renderHome();
-      renderStats();
+      refreshStats();
     });
   });
 }
@@ -898,6 +942,7 @@ function openPlanSheet() {
           save(true);
           closeSheet();
           renderHome();
+          syncGuard();
           openPlanSheet();
           toast('已从今日计划删除');
         });
@@ -1035,6 +1080,11 @@ function pomoStart() {
   p.startAt = Date.now() - (total - p.remain) * 1000;
   if (p.phase === 'focus') {
     const t = pomoLinkedTask();
+    // 同一任务不要同时跑两种计时，避免时长被重复计入
+    if (t && t.focusStart) {
+      pauseTask(t);
+      toast('已暂停任务计时 · 改用番茄钟');
+    }
     p.taskId = t ? t.id : null;
     p.taskTitle = t ? t.title : '';
   }
@@ -1042,7 +1092,6 @@ function pomoStart() {
   haptic('medium');
   syncGuard();
   renderFocus();
-  renderPomoMini();
   if (immerseOpen) renderImmerse();   // 暂停后继续：不要重放入场动画
   else openImmerse();
 }
@@ -1057,7 +1106,6 @@ function pomoPause() {
   haptic('light');
   syncGuard();
   renderFocus();
-  renderPomoMini();
   if (immerseOpen) renderImmerse();
 }
 
@@ -1071,7 +1119,6 @@ function pomoReset() {
   save();
   syncGuard();
   renderFocus();
-  renderPomoMini();
   if (immerseOpen) renderImmerse();
 }
 
@@ -1088,7 +1135,6 @@ function pomoSkip() {
   haptic('light');
   syncGuard();
   renderFocus();
-  renderPomoMini();
   if (immerseOpen) renderImmerse();
   toast(p.phase === 'break' ? '跳过本轮 · 先休息一下' : '休息结束 · 回到专注');
 }
@@ -1142,7 +1188,7 @@ function pomoFinish() {
   toast(wasBreak ? '休息结束 · 开始下一轮专注' : `完成一个番茄 · ${minutes} 分钟`);
   renderHome();
   renderFocus();
-  renderStats();
+  refreshStats();
   if (immerseOpen) {
     if (p.auto) renderImmerse();
     else closeImmerse();
@@ -1191,7 +1237,6 @@ function setPomoPreset(v) {
   save(true);
   haptic('light');
   renderFocus();
-  renderPomoMini();
   toast(`番茄节奏 · ${v} 分钟专注`);
 }
 
@@ -1361,9 +1406,7 @@ function updateGuardRow() {
   if (sw) sw.checked = !!p.guard;
 
   if (sub) {
-    if (active && (!usage || !overlay)) {
-      sub.textContent = !usage ? '缺少「使用情况访问」· 到设置里开启' : '缺少「显示在其他应用上层」· 到设置里开启';
-    } else if (active) {
+    if (active) {
       const alive = n && n.guardRunning ? !!n.guardRunning() : true;
       sub.textContent = alive
         ? '屏蔽中 · 切到无关应用会被立即盖住'
@@ -1376,12 +1419,6 @@ function updateGuardRow() {
       sub.textContent = '专注期间自动屏蔽无关应用';
     }
   }
-
-  // 首页同款开关跟随状态
-  const homeSw = $('#homeGuard');
-  if (homeSw) homeSw.checked = !!p.guard;
-  const homeSub = $('#homeGuardSub');
-  if (homeSub) homeSub.textContent = guardText(!!p.guard, active);
 }
 
 /** 统一设置极度沉浸开关（专注页与首页共用） */
@@ -1849,75 +1886,6 @@ function renderPomoBars(container, keys, counts) {
   }, 50);
 }
 
-function renderPomoMini() {
-  const el = $('#pomoMini');
-  if (!el) return;
-  const p = state.pomo;
-  const total = pomoTotal();
-  const remain = p.running ? pomoRemain() : p.remain;
-  const isBreak = p.phase === 'break';
-  const started = remain < total - .5;
-  const guard = !!p.guard;
-  const busy = p.running && !isBreak;
-  const actText = p.running
-    ? (isBreak ? '暂停休息' : '暂停专注')
-    : started
-      ? (isBreak ? '继续休息' : '继续专注')
-      : (isBreak ? '开始休息' : '开始专注');
-
-  el.innerHTML = `
-    <div class="fm-head">
-      <div>
-        <div class="micro-label">FOCUS · 专注</div>
-        <div class="fm-title">${p.running ? (isBreak ? '番茄休息中' : '正在专注') : (isBreak ? '准备休息' : '番茄钟')}</div>
-      </div>
-      <div class="fm-time">${mmss(remain)}</div>
-    </div>
-    <div class="fm-meta">
-      <span>${p.preset} 分钟节奏</span><i></i><span>今日 ${pomoTodayList().length} 个</span>
-      ${p.taskTitle && !isBreak ? `<i></i><span class="fm-taskname">${esc(p.taskTitle)}</span>` : ''}
-    </div>
-    <div class="fm-guard ${guard ? 'is-on' : ''}">
-      <span class="fm-shield">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3.5v5c0 4.6-3 8-7 9.5-4-1.5-7-4.9-7-9.5v-5z"/><path d="M9.5 12l2 2 3.5-4"/></svg>
-      </span>
-      <div class="fm-guard-body">
-        <div class="fm-guard-title">极度沉浸</div>
-        <div class="fm-guard-sub" id="homeGuardSub">${guardText(guard, busy)}</div>
-      </div>
-      <label class="switch"><input type="checkbox" id="homeGuard" ${guard ? 'checked' : ''}><i></i></label>
-    </div>
-    <div class="fm-actions">
-      <button class="btn btn-primary" data-fm="toggle">${actText}</button>
-      <button class="btn btn-ghost" data-fm="open">专注页</button>
-    </div>`;
-
-  const sw = $('#homeGuard', el);
-  if (sw) sw.addEventListener('change', () => setGuardEnabled(sw.checked));
-  el.onclick = e => {
-    const btn = e.target.closest('[data-fm]');
-    if (btn) {
-      haptic('light');
-      if (btn.dataset.fm === 'toggle') {
-        if (state.pomo.running) pomoPause(); else pomoStart();
-      } else {
-        switchTab(1);
-      }
-      return;
-    }
-    if (e.target.closest('.fm-guard')) return;
-    haptic('light');
-    switchTab(1);
-  };
-}
-
-/** 极度沉浸的状态文案 */
-function guardText(on, busy) {
-  if (!on) return '番茄钟与任务计时期间自动屏蔽';
-  if (!guardReady()) return '权限未齐 · 去设置里开启两项权限';
-  return busy ? '屏蔽中 · 切到无关应用会被立即盖住' : '已开启 · 开始计时后生效';
-}
-
 function tickPomo() {
   const p = state.pomo;
   if (!p.running || !p.endAt) return;
@@ -1931,8 +1899,6 @@ function tickPomo() {
   const total = pomoTotal();
   const time = $('#pomoTime');
   if (time) time.textContent = mmss(remain);
-  const mini = $('#pomoMini .fm-time');
-  if (mini) mini.textContent = mmss(remain);
   const ring = $('#pomoFill');
   if (ring) ring.style.strokeDashoffset = POMO_C * clamp(remain / total, 0, 1);
   tickImmerse();
@@ -1957,6 +1923,9 @@ function lastDays(n) {
 }
 
 let statsRange = 7;
+
+/** 统计页不可见时不必重算：切到统计页时会整体重绘 */
+function refreshStats() { if (tabIndex === 2) renderStats(); }
 
 function renderStats() {
   const range = statsRange;
@@ -2155,7 +2124,9 @@ function openDetail(kind) {
   const totalCount = sums.reduce((a, s) => a + s.total, 0);
   const skippedCount = sums.reduce((a, s) => a + s.skipped, 0);
   const rate = totalCount ? Math.round(doneCount / totalCount * 100) : 0;
-  const avg = totalActual / range;
+  // 与总览卡同口径：分母用「有记录的日期」，不是区间天数
+  const recordedDays = keys.filter(k => state.days[k]).length || 1;
+  const avg = totalActual / recordedDays;
   const streak = calcStreak();
 
   const pomoRecs = pomoRecords(keys);
@@ -2174,7 +2145,7 @@ function openDetail(kind) {
   if (kind === 'overview') {
     eyebrow = 'OVERVIEW · 总览';
     title = `近 ${range} 天数据`;
-    meta = `活跃 ${activeDays} 天 · 平均每天 ${hText(avg)}`;
+    meta = `有记录 ${recordedDays} 天 · 平均每天 ${hText(avg)}`;
     body = dTable(
       dHead(['项目', '数值', '', '占比'])
       + dRow('实际投入', '', '', hText(totalActual))
@@ -2349,7 +2320,8 @@ function recSpanAvg() {
 function calcStreak() {
   let count = 0;
   const today = new Date();
-  for (let i = 0; i < 365; i++) {
+  // 数据只保留 120 天，再往前数没有意义
+  for (let i = 0; i < 120; i++) {
     const k = dateKey(addDays(today, -i));
     const s = daySummary(state.days[k]);
     if (s.done > 0) count++;
@@ -2448,7 +2420,7 @@ function bindSettings() {
     toast('学习数据已准备导出');
   });
   $('#btnDemo').addEventListener('click', () => {
-    seedDemo(); toast('已填充近 7 天演示数据'); renderStats(); renderHome();
+    seedDemo(); toast('已填充近 7 天演示数据'); refreshStats(); renderHome();
   });
   $('#btnReset').addEventListener('click', () => {
     if (!confirm('确定清除全部记录吗？计划、统计和设置都会重置。')) return;
@@ -2540,6 +2512,12 @@ function checkPermissions() {
   }
   let st = {};
   try { st = JSON.parse(n.permissionState ? n.permissionState() : '{}'); } catch (e) {}
+  // 精确闹钟权限变了，排程方式会跟着变（精确 / 非精确）：强制重建一次
+  if (lastExactState !== null && !!st.exact !== lastExactState) {
+    lastSyncJson = '';
+    syncNative();
+  }
+  lastExactState = !!st.exact;
   $('#notifyPermText').textContent = st.notify ? '已开启 · 到点会收到系统通知' : '未开启 · 提醒不会弹出';
   $('#btnNotifyPerm').textContent = st.notify ? '已开启' : '去开启';
   $('#btnNotifyPerm').classList.toggle('ok', !!st.notify);
@@ -2616,6 +2594,7 @@ function boot() {
     }
   } catch (e) {}
   state = loadState();
+  settleStaleTimers(); // 前一天忘了停的计时先按 0 点结算
   ensureToday();
   tickPomo();          // 先把"启动前就已到点"的番茄结算掉，避免带着过期 endAt 去起守护
   applyTheme();
@@ -2623,9 +2602,7 @@ function boot() {
   bindSettingsStatic();
   bindGuard();
   renderAccountUI();
-  renderHome();
-  renderFocus();
-  renderStats();
+  renderHome();        // 只画首屏；番茄页 / 统计页在 switchTab 时按需渲染
   checkPermissions();
   layoutPages();
   consumeNative();
@@ -2696,10 +2673,11 @@ function boot() {
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
+      settleStaleTimers();
       ensureToday();
       tickPomo();
       renderHome();
-      renderStats();
+      refreshStats();
       checkPermissions();
       consumeNative();
       syncGuard();
@@ -2707,6 +2685,7 @@ function boot() {
   });
 
   window.__onNativeResume = () => {
+    settleStaleTimers();
     ensureToday();
     tickPomo();
     renderHome();
@@ -2723,6 +2702,7 @@ function boot() {
 
   // 每秒刷新时钟与计时
   setInterval(() => {
+    if (document.hidden) return;   // 后台不做 DOM 活儿，回到前台会整体重绘
     updateClocks();
     tickPomo();
     const rec = todayRec();
@@ -2763,9 +2743,10 @@ function boot() {
     }
     if (todayKey() !== dayCursor) {
       dayCursor = todayKey();
+      settleStaleTimers();
       ensureToday();
       renderHome();
-      renderStats();
+      refreshStats();
     }
   }, 15000);
 }
@@ -2779,4 +2760,10 @@ window.__applyInsets = (top, bottom, ime) => {
   root.style.setProperty('--sab', (bottom || 0) + 'px');
   root.style.setProperty('--kb', (ime || 0) + 'px');
   document.body.classList.toggle('kb-open', (ime || 0) > 60);
+};
+
+// 安卓返回键：先回「今日」，已经在今日才退出
+window.__backToHome = () => {
+  if (tabIndex !== 0) { switchTab(0); return '1'; }
+  return '0';
 };

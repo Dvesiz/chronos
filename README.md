@@ -8,7 +8,7 @@
 
 为考研冲刺打造的 Android 时间管理应用 —— 计划、专注、复盘，一个闭环。
 
-[![version](https://img.shields.io/badge/version-2.6.0-FF5A1F?style=flat-square)]()
+[![version](https://img.shields.io/badge/version-2.6.1-FF5A1F?style=flat-square)]()
 [![platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?style=flat-square)]()
 [![deps](https://img.shields.io/badge/deps-zero-0074D9?style=flat-square)]()
 [![build](https://img.shields.io/badge/build-No%20Gradle-24292E?style=flat-square)]()
@@ -145,6 +145,7 @@ chronos/
 
 | 版本 | 内容 |
 |:---|:---|
+| **2.6.1** | 省电与流畅：息屏时暂停前台应用轮询；番茄页 / 统计页改为切页时按需渲染；闹钟按签名去重，不再每次保存全量重建。修复：键盘遮挡弹层表单、返回键直达退出、跨天未停的计时无限累加、跳过 / 删除任务不停表、完成态补时暂停后退回待开始、番茄与任务计时对同一任务重复计时、详情页日均口径不一致 |
 | **2.6.0** | 番茄钟加入极简专注界面（全屏计时 + 激励语）；首页橙色卡片内置换开沉浸开关；首页移除番茄钟迷你卡；导航「专注」更名「番茄钟」 |
 | **2.5.3** | 重绘通知 / 状态栏小图标：环占满 24dp、缺口收到 45°，状态栏下不再糊成一个「C」 |
 | **2.5.2** | 文档：界面截图改用平板（820×1093）布局；修复「今日」柱状被内联渐变覆盖导致高亮失效 |

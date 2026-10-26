@@ -16,6 +16,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
@@ -44,6 +45,7 @@ public class FocusGuardService extends Service implements LockPanel.Listener {
     private volatile String desiredBlock = null;
     private static volatile boolean running = false;
     private UsageStatsManager usm;
+    private PowerManager powerManager;
     private WindowManager wm;
     private LockPanel panel;
     private long endAt = 0L;
@@ -61,6 +63,7 @@ public class FocusGuardService extends Service implements LockPanel.Listener {
     public void onCreate() {
         super.onCreate();
         usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+        powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         mainHandler = new Handler(Looper.getMainLooper());
         pollThread = new HandlerThread("chronos-guard");
@@ -169,6 +172,12 @@ public class FocusGuardService extends Service implements LockPanel.Listener {
                 long now = System.currentTimeMillis();
                 if (endAt > 0 && now >= endAt) {
                     finishSession();
+                    return;
+                }
+                // 息屏期间不会发生前台应用切换：跳过 UsageStats 查询（本服务最主要的耗电项），
+                // 只保留到点检查；亮屏后下一轮自动恢复，遮罩状态保持不变。
+                if (powerManager != null && !powerManager.isInteractive()) {
+                    handler.postDelayed(this, 2000);
                     return;
                 }
                 String fg = foregroundPackage();
