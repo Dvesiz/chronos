@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#f2f2f4">
+<title>时序 · Chronos</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- 柔和暖光背景 -->
+<div class="ambient" id="ambient">
+  <div class="grain"></div>
+</div>
+
+<div class="app">
+  <div class="pages" id="pages">
+
+    <!-- ============ 今日 ============ -->
+    <section class="page" id="pageToday">
+      <div class="scroll">
+        <header class="home-head">
+          <div class="brand">
+            <span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7.5" style="fill:var(--accent)"/><circle cx="12" cy="12" r="6.3" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-dasharray="29.7 9.9"/><circle cx="12" cy="12" r="1.9" fill="#fff"/></svg></span>
+            <span class="brand-name">时序 · CHRONOS</span>
+            <span class="live-clock" id="liveClock">--:--</span>
+          </div>
+          <div class="date-line"><span id="dow">MONDAY</span><span class="sep"></span><span id="dateText">10 月 26 日</span></div>
+          <h1 id="greeting">今天，保持自己的节奏。</h1>
+        </header>
+
+        <div class="home-grid">
+          <div class="home-main">
+            <section class="progress-card glass" id="progressCard">
+              <div class="ring-wrap">
+                <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#4159d6"/>
+                      <stop offset="1" stop-color="#7b62dd"/>
+                    </linearGradient>
+                  </defs>
+                  <circle class="ring-bg" cx="60" cy="60" r="51"/>
+                  <circle class="ring-fg" id="ringFg" cx="60" cy="60" r="51"/>
+                </svg>
+                <div class="ring-center">
+                  <b id="doneCount">0</b><span>/ 6</span>
+                </div>
+              </div>
+              <div class="progress-meta">
+                <div class="micro-label">TODAY'S PROGRESS</div>
+                <div class="big"><span id="pct">0</span><i>%</i></div>
+                <div class="sub">今日计划完成率</div>
+                <div class="micro-stats">
+                  <div><i>计划</i><b id="planText">--</b></div>
+                  <div><i>实际</i><b id="actualText">--</b></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="now-card glass" id="nowCard"></section>
+
+          </div>
+
+          <div class="home-side">
+            <div class="section-head">
+              <h2>今日安排</h2>
+              <button class="ghost-btn" id="editPlanBtn">编辑计划</button>
+            </div>
+            <div class="timeline" id="timeline"></div>
+            <div class="footnote" id="footnote">模板只是示例 · 在「编辑计划」里换成你自己的节奏</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 专注 · 番茄钟 ============ -->
+    <section class="page" id="pageFocus">
+      <div class="scroll">
+        <header class="home-head">
+          <div class="brand">
+            <span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7.5" style="fill:var(--accent)"/><circle cx="12" cy="12" r="6.3" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-dasharray="29.7 9.9"/><circle cx="12" cy="12" r="1.9" fill="#fff"/></svg></span>
+            <span class="brand-name">时序 · CHRONOS</span>
+            <span class="live-clock" id="clockFocus">--:--</span>
+          </div>
+          <div class="date-line"><span>FOCUS</span><span class="sep"></span><span>番茄专注</span></div>
+          <h1>把注意力，<br>交给这一小段。</h1>
+        </header>
+
+        <div class="focus-grid">
+          <section class="pomo-stage glass">
+            <div class="seg pomo-presets" id="pomoPresets">
+              <button data-preset="25" class="on">25 / 5</button>
+              <button data-preset="50">50 / 10</button>
+              <button data-preset="15">15 / 3</button>
+              <span class="seg-glider" id="pomoPresetGlider"></span>
+            </div>
+
+            <div class="pomo-ring-wrap">
+              <svg class="pomo-ring" viewBox="0 0 200 200" aria-hidden="true">
+                <circle class="pomo-track" cx="100" cy="100" r="86"/>
+                <circle class="pomo-fill" id="pomoFill" cx="100" cy="100" r="86"/>
+              </svg>
+              <div class="pomo-center">
+                <div class="pomo-phase" id="pomoPhase">专注</div>
+                <div class="pomo-time" id="pomoTime">25:00</div>
+                <div class="pomo-sub" id="pomoSub">准备好就开始</div>
+              </div>
+            </div>
+
+            <div class="pomo-dots" id="pomoDots"></div>
+            <div class="pomo-task" id="pomoTask"></div>
+
+            <div class="guard-row" id="guardRow">
+              <div class="guard-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3.5v5c0 4.6-3 8-7 9.5-4-1.5-7-4.9-7-9.5v-5z"/><path d="M9.5 12l2 2 3.5-4"/></svg>
+              </div>
+              <div class="row-body">
+                <div class="row-title">极度沉浸</div>
+                <div class="row-sub" id="guardSub">番茄钟与任务计时期间自动屏蔽</div>
+              </div>
+              <label class="switch"><input type="checkbox" id="setGuard"><i></i></label>
+            </div>
+
+            <div class="pomo-actions">
+              <button class="btn btn-primary" id="pomoMain">开始专注</button>
+              <button class="btn btn-ghost" id="pomoReset">重置</button>
+            </div>
+            <button class="pomo-skip" id="pomoSkip">跳过这一阶段</button>
+          </section>
+
+          <div class="pomo-side">
+            <section class="pomo-summary glass tap-card" id="pomoSummary" data-detail="pomoSummary"></section>
+
+            <section class="chart-card glass tap-card" data-detail="pomoLog">
+              <div class="card-head">
+                <div>
+                  <div class="micro-label">TODAY</div>
+                  <h2 class="card-title">今日番茄</h2>
+                </div>
+                <div class="chart-legend" id="pomoTodayLegend">0 个</div>
+              </div>
+              <div class="pomo-log" id="pomoLog"></div>
+            </section>
+
+            <section class="chart-card glass tap-card" data-detail="pomoWeek">
+              <div class="card-head">
+                <div>
+                  <div class="micro-label">LAST 7 DAYS</div>
+                  <h2 class="card-title">本周番茄数</h2>
+                </div>
+                <div class="chart-legend">个 / 天</div>
+              </div>
+              <div class="bars pomo-bars" id="pomoWeekBars"></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 统计 ============ -->
+    <section class="page" id="pageStats">
+      <div class="scroll">
+        <header class="home-head">
+          <div class="brand">
+            <span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7.5" style="fill:var(--accent)"/><circle cx="12" cy="12" r="6.3" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-dasharray="29.7 9.9"/><circle cx="12" cy="12" r="1.9" fill="#fff"/></svg></span>
+            <span class="brand-name">时序 · CHRONOS</span>
+            <span class="live-clock" id="clockStats">--:--</span>
+          </div>
+          <div class="date-line"><span>STATISTICS</span><span class="sep"></span><span>数据统计</span></div>
+          <h1>把时间，<br>变成看得见的进步。</h1>
+          <div class="seg range-seg" id="rangeSeg">
+            <button data-range="7" class="on">近 7 天</button>
+            <button data-range="30">近 30 天</button>
+            <span class="seg-glider" id="rangeGlider"></span>
+          </div>
+        </header>
+
+        <div class="stats-grid">
+          <div class="stat-hero glass tap-card" id="statHero" data-detail="overview"></div>
+
+          <div class="chart-card glass tap-card" data-detail="daily">
+            <div class="card-head">
+              <div>
+                <div class="micro-label" id="barsLabel">LAST 7 DAYS</div>
+                <h2 class="card-title">每日投入时长</h2>
+              </div>
+              <div class="chart-legend"><i class="dot-accent"></i>小时</div>
+            </div>
+            <div class="bars" id="bars"></div>
+          </div>
+
+          <div class="chart-card glass tap-card" data-detail="category">
+            <div class="card-head">
+              <div>
+                <div class="micro-label">BY CATEGORY</div>
+                <h2 class="card-title">分类分布</h2>
+              </div>
+              <div class="chart-legend" id="subjectTotal">--</div>
+            </div>
+            <div class="subject-list" id="subjectList"></div>
+          </div>
+
+          <div class="chart-card glass tap-card" data-detail="rhythm">
+            <div class="card-head">
+              <div>
+                <div class="micro-label">30 DAY RHYTHM</div>
+                <h2 class="card-title">学习节奏</h2>
+              </div>
+              <div class="chart-legend">近 30 天</div>
+            </div>
+            <div class="heatmap" id="heatmap"></div>
+            <div class="heat-legend"><span>少</span><i class="h0"></i><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i><span>多</span></div>
+          </div>
+
+          <div class="chart-card glass tap-card" data-detail="pomo">
+            <div class="card-head">
+              <div>
+                <div class="micro-label">POMODORO</div>
+                <h2 class="card-title">番茄趋势</h2>
+              </div>
+              <div class="chart-legend" id="pomoWeekLegend">0 个</div>
+            </div>
+            <div class="bars pomo-bars" id="statsPomoBars"></div>
+          </div>
+
+          <div class="chart-card glass tap-card" data-detail="insight">
+            <div class="card-head">
+              <div>
+                <div class="micro-label">INSIGHTS</div>
+                <h2 class="card-title">深度分析</h2>
+              </div>
+            </div>
+            <div class="report-list" id="insightList"></div>
+          </div>
+
+          <div class="report-card glass span-2" id="reportCard"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 设置 ============ -->
+    <section class="page" id="pageSettings">
+      <div class="scroll">
+        <header class="home-head">
+          <div class="brand">
+            <span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7.5" style="fill:var(--accent)"/><circle cx="12" cy="12" r="6.3" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-dasharray="29.7 9.9"/><circle cx="12" cy="12" r="1.9" fill="#fff"/></svg></span>
+            <span class="brand-name">时序 · CHRONOS</span>
+            <span class="live-clock" id="clockSettings">--:--</span>
+          </div>
+          <div class="date-line"><span>SETTINGS</span><span class="sep"></span><span>偏好设置</span></div>
+          <h1>安静地提醒，<br>不打扰你的专注。</h1>
+        </header>
+
+        <div class="settings-grid">
+          <div class="settings-col">
+            <div class="group-label">账户</div>
+            <div class="profile-card glass" id="profileCard"></div>
+
+            <div class="group-label">提醒</div>
+            <div class="list-card glass">
+              <div class="row">
+                <div class="row-icon icon-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10.5 21a1.8 1.8 0 0 0 3 0"/></svg></div>
+                <div class="row-body"><div class="row-title">任务提醒</div><div class="row-sub">到点通过系统通知提醒</div></div>
+                <label class="switch"><input type="checkbox" id="setReminder"><i></i></label>
+              </div>
+              <div class="row">
+                <div class="row-icon icon-violet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+                <div class="row-body"><div class="row-title">提前提醒</div><div class="row-sub">开始前几分钟先给一个提示</div></div>
+                <select class="mini-select" id="setAdvance">
+                  <option value="0">关闭</option>
+                  <option value="5">5 分钟</option>
+                  <option value="10">10 分钟</option>
+                  <option value="15">15 分钟</option>
+                </select>
+              </div>
+              <div class="row" id="rowNotifyPerm">
+                <div class="row-icon icon-teal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l7 4v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7z"/><path d="M9.5 12l1.8 1.8 3.4-3.6"/></svg></div>
+                <div class="row-body"><div class="row-title">通知权限</div><div class="row-sub" id="notifyPermText">检查中…</div></div>
+                <button class="pill-btn" id="btnNotifyPerm">去开启</button>
+              </div>
+              <div class="row" id="rowExactPerm">
+                <div class="row-icon icon-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg></div>
+                <div class="row-body"><div class="row-title">精确闹钟</div><div class="row-sub" id="exactPermText">检查中…</div></div>
+                <button class="pill-btn" id="btnExactPerm">去开启</button>
+              </div>
+            </div>
+
+            <div class="group-label">专注</div>
+            <div class="list-card glass">
+              <div class="row">
+                <div class="row-icon icon-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.6"/><path d="M9 2h6"/></svg></div>
+                <div class="row-body"><div class="row-title">番茄时长</div><div class="row-sub">专注 / 休息的默认节奏</div></div>
+                <select class="mini-select" id="setPomoPreset">
+                  <option value="25">25 / 5</option>
+                  <option value="50">50 / 10</option>
+                  <option value="15">15 / 3</option>
+                </select>
+              </div>
+              <div class="row">
+                <div class="row-icon icon-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 12a8 8 0 0 1 14-5"/><path d="M18 4v5h-5"/><path d="M20 12a8 8 0 0 1-14 5"/><path d="M6 20v-5h5"/></svg></div>
+                <div class="row-body"><div class="row-title">自动接续</div><div class="row-sub">结束后自动进入休息或下一轮</div></div>
+                <label class="switch"><input type="checkbox" id="setPomoAuto"><i></i></label>
+              </div>
+              <div class="row">
+                <div class="row-icon icon-teal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 9a6 6 0 1 1 12 0c0 4-3 6-6 8-3-2-6-4-6-8z"/><path d="M12 9v3"/></svg></div>
+                <div class="row-body"><div class="row-title">结束提示音</div><div class="row-sub">阶段结束时响铃并震动</div></div>
+                <label class="switch"><input type="checkbox" id="setPomoSound"><i></i></label>
+              </div>
+              <div class="row" id="rowUsagePerm">
+                <div class="row-icon icon-violet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3.5v5c0 4.6-3 8-7 9.5-4-1.5-7-4.9-7-9.5v-5z"/><path d="M9.5 12l2 2 3.5-4"/></svg></div>
+                <div class="row-body"><div class="row-title">使用情况访问</div><div class="row-sub" id="usagePermText">「极度沉浸」需要此权限来识别前台应用</div></div>
+                <button class="pill-btn" id="btnUsagePerm">去开启</button>
+              </div>
+              <div class="row" id="rowOverlayPerm">
+                <div class="row-icon icon-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="3"/><path d="M8 21h8"/><path d="M9 9.5l2 2 4-4"/></svg></div>
+                <div class="row-body"><div class="row-title">显示在其他应用上层</div><div class="row-sub" id="overlayPermText">「极度沉浸」靠悬浮层真正盖住无关应用</div></div>
+                <button class="pill-btn" id="btnOverlayPerm">去开启</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-col">
+            <div class="group-label">外观与动效</div>
+            <div class="list-card glass">
+              <div class="row">
+                <div class="row-icon icon-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/></svg></div>
+                <div class="row-body"><div class="row-title">深色模式</div><div class="row-sub">夜间学习更柔和</div></div>
+                <label class="switch"><input type="checkbox" id="setDark"><i></i></label>
+              </div>
+              <div class="row">
+                <div class="row-icon icon-pink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 15c2-1 3 1 5 0s3 1 5 0 3 1 6 0"/><path d="M4 9c2-1 3 1 5 0s3 1 5 0 3 1 6 0"/></svg></div>
+                <div class="row-body"><div class="row-title">灵动动效</div><div class="row-sub">版式切换与弹性反馈</div></div>
+                <label class="switch"><input type="checkbox" id="setMotion"><i></i></label>
+              </div>
+              <div class="row">
+                <div class="row-icon icon-teal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M9 8h6M9 12h6"/></svg></div>
+                <div class="row-body"><div class="row-title">每日模板</div><div class="row-sub" id="tplSummary">六段学习 · 8 小时</div></div>
+                <button class="pill-btn" id="btnEditTemplate">编辑</button>
+              </div>
+            </div>
+
+            <div class="group-label">数据</div>
+            <div class="list-card glass">
+              <div class="row">
+                <div class="row-icon icon-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 4v11M8 11l4 4 4-4"/><path d="M5 19h14"/></svg></div>
+                <div class="row-body"><div class="row-title">导出学习数据</div><div class="row-sub">以 JSON 分享，便于长期备份</div></div>
+                <button class="pill-btn" id="btnExport">导出</button>
+              </div>
+              <div class="row">
+                <div class="row-icon icon-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3v12"/><path d="M8 9l4-4 4 4"/><path d="M5 21h14"/><path d="M9 17h6"/></svg></div>
+                <div class="row-body"><div class="row-title">演示数据</div><div class="row-sub">填充近 7 天示例，仅影响本机</div></div>
+                <button class="pill-btn" id="btnDemo">填充</button>
+              </div>
+              <div class="row">
+                <div class="row-icon icon-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M7 7l1 13h8l1-13"/></svg></div>
+                <div class="row-body"><div class="row-title">清除全部记录</div><div class="row-sub">计划、统计与设置都会重置</div></div>
+                <button class="pill-btn danger" id="btnReset">清除</button>
+              </div>
+            </div>
+
+            <div class="about-card glass">
+              <div class="about-logo">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <defs><linearGradient id="lga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF8148"/><stop offset="1" stop-color="#EE4A0C"/></linearGradient></defs>
+                  <rect width="24" height="24" rx="7.5" fill="url(#lga)"/>
+                  <circle cx="12" cy="12" r="6.3" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-dasharray="29.7 9.9"/>
+                  <circle cx="12" cy="12" r="1.9" fill="#fff"/>
+                </svg>
+              </div>
+              <div class="about-title">时序 · Chronos</div>
+              <div class="about-sub">让每一段时间，都有明确的方向。</div>
+              <div class="about-ver" id="aboutVer">Version 2.5 · 个人版</div>
+              <div class="about-hint" id="envHint"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="tab-fade"></div>
+
+  <nav class="tabbar" id="tabbar">
+    <div class="tab-indicator" id="tabIndicator"></div>
+    <button class="tab is-active" data-tab="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="4"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M9 14h2M13 14h2M9 17h2"/></svg>
+      <span>今日</span>
+    </button>
+    <button class="tab" data-tab="1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.6"/><path d="M9 2h6"/></svg>
+      <span>番茄钟</span>
+    </button>
+    <button class="tab" data-tab="2">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 19V9M12 19V5M19 19v-6"/><path d="M3.5 19h17"/></svg>
+      <span>统计</span>
+    </button>
+    <button class="tab" data-tab="3">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 8h14M5 16h14"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/></svg>
+      <span>设置</span>
+    </button>
+  </nav>
+</div>
+
+
+<!-- 极简专注界面：开始番茄后盖住整个 app -->
+<div class="immerse" id="immerse" aria-hidden="true">
+  <div class="im-glow"></div>
+  <div class="im-wrap">
+    <div class="im-eyebrow" id="imEyebrow">FOCUS · 专注</div>
+    <div class="im-time" id="imTime">25:00</div>
+    <div class="im-track"><i id="imBar"></i></div>
+    <div class="im-line" id="imLine">别想太多，先做二十五分钟。</div>
+    <div class="im-actions">
+      <button class="im-btn" id="imPause">暂停</button>
+      <button class="im-btn ghost" id="imExit">退出</button>
+    </div>
+    <div class="im-task" id="imTask"></div>
+  </div>
+</div>
+
+<div class="sheet-layer" id="sheetLayer" aria-hidden="true">
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+  <div class="sheet-panel glass-strong" id="sheetPanel"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# 换行统一：文本按内容自动判断，shell 脚本在 Windows 检出时也保持 LF
+* text=auto
+*.sh text eol=lf
+*.bat text eol=crlf
+
+# 二进制资源
+*.png binary
+*.jks binary
+*.keystore binary

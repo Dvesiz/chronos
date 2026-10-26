@@ -1,0 +1,167 @@
+<div align="center">
+
+<img src="docs/img/logo.svg" width="112" alt="时序 · Chronos" />
+
+# 时序 · Chronos
+
+**让每一段时间，都有明确的方向。**
+
+为考研冲刺打造的 Android 时间管理应用 —— 计划、专注、复盘，一个闭环。
+
+[![version](https://img.shields.io/badge/version-2.6.0-FF5A1F?style=flat-square)]()
+[![platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?style=flat-square)]()
+[![deps](https://img.shields.io/badge/deps-zero-0074D9?style=flat-square)]()
+[![build](https://img.shields.io/badge/build-No%20Gradle-24292E?style=flat-square)]()
+[![license](https://img.shields.io/badge/license-MIT-2EA44F?style=flat-square)]()
+
+**零框架 · 零依赖 · 无 Gradle —— 一条 build.sh 打包**
+
+<br />
+
+| | | |
+|:---:|:---:|:---:|
+| ![今日](docs/img/home.png) | ![番茄钟](docs/img/focus.png) | ![沉浸](docs/img/immerse.png) |
+| **今日** · 时间轴与当前任务 | **番茄钟** · 节奏与沉浸开关 | **沉浸专注** · 只剩时间与一句话 |
+| ![统计](docs/img/stats.png) | ![任务](docs/img/task.png) | ![暗色](docs/img/dark.png) |
+| **统计** · 7 / 30 天复盘 | **任务详情** · 十种快捷操作 | **暗色模式** · 夜间自动适配 |
+
+<sub>以上均为平板（820 × 1093）双栏布局实拍；手机端自动收成单栏。</sub>
+
+</div>
+
+---
+
+## 设计哲学
+
+考研冲刺的每一天都高度相似：同样的科目、同样的时段、同样的战斗。
+**时序** 不做待办清单，而是把一天切成清晰的时段 ——
+你只需要知道两件事：**现在该做什么，以及这一段做得怎么样。**
+
+> **计划（Plan）→ 专注（Focus）→ 复盘（Review）**，每一天自动闭环。
+
+## 功能特性
+
+### 📅 每日计划
+- **模板驱动** —— 配置一次作息模板（如 08:00 单词 / 09:00 数学 / 14:00 专业课…），每天自动生成日程
+- **弹性调整** —— 临时有事？支持**延后 10 分钟 / 缩短 15 分钟 / 拆分任务 / 跳过**，一键应对
+- **完成态补时** —— 标记完成后发现还没学完？点「继续」在已累计时长上继续计时
+- **随时增删** —— 今日计划与每日模板均可新增、编辑、删除（删除带二次确认防误触）
+
+### 🍅 沉浸专注
+- **番茄钟** —— 经典 25/5 节奏，可自定义时长，支持自动衔接休息
+- **极简专注界面** —— 开始番茄后铺满整屏：只剩时间、一句话和暂停 / 退出，入场逐层浮起，每 45 秒换一句
+- **任务计时** —— 独立于番茄钟的纯专注计时，暂停 / 恢复 / 累计都在
+- **首页速启** —— 进行中的橙色卡片里直接开始 / 暂停当前任务，一键开关沉浸
+- **极度沉浸** —— 借「使用情况访问 + 悬浮窗」识别前台应用，切走即被全屏遮罩盖住（可一键回到 Chronos，长按 3 秒放弃本轮）
+  - 番茄钟与任务计时都生效，到点由前台服务发结束通知，息屏也不丢
+  - 闹钟 / 来电 / 紧急呼叫 / 授权弹窗自动放行
+
+### 📊 数据统计
+- **7 / 30 天**专注时长柱状趋势
+- **学科分布** —— 数学 / 专业课 / 英语 / 政治投入一目了然
+- **打卡热力图** —— GitHub 风格的一年坚持可视化
+- **完成率报告** —— 计划 vs 实际，诚实面对每一天
+
+### 🔔 系统级体验
+- **提醒通知** —— AlarmManager 精准到分钟的时段提醒，支持提前量设置，重启后自动重建
+- **通知操作** —— 「开始专注」「稍后提醒」直接在通知栏完成，不用打开 App
+- **深色模式** —— 一键切换 / 跟随系统
+- **平板适配** —— 双栏布局、横屏优化、大屏等比放大，手机到平板一套代码
+
+## 关于数据与账户
+
+这是一个**纯单机**应用：没有服务器、没有云同步、不联网（`INTERNET` 权限仅为可选的验证码发信预留）。
+
+- 学习数据存在 `localStorage`，并同步一份到 `SharedPreferences`（双保险，用于 WebView 存储被清时恢复）
+- 「账户」是本机资料（昵称 / 头像 / 邮箱），验证码只在本机校验，**不是真实鉴权**，换机不会自动同步
+- 卸载应用会一并清掉这两处数据，需要保留请先用「导出学习数据」
+
+## 快速开始
+
+### 方式一：直接安装
+
+前往 [Releases](../../releases) 下载最新 APK，安装即可（Android 8.0+，无需任何权限以外的配置）。
+
+### 方式二：从源码构建
+
+```bash
+git clone https://github.com/Dvesiz/chronos.git
+cd chronos
+./build.sh
+```
+
+产物：`build/Chronos-x.x.x.apk`（自动签名，直接安装）
+
+<details>
+<summary><b>构建依赖</b>（点击展开）</summary>
+
+| 依赖 | 版本 |
+|:---|:---|
+| JDK | 11+ |
+| Android SDK Build-Tools | 35.0.0 |
+| Android SDK Platform | android-35 |
+| zip / keytool | 随 JDK / 系统 |
+
+将两者解压至 `/opt/android-sdk/build-tools/35.0.0` 与 `/opt/android-sdk/platforms/android-35`（或修改 `build.sh` 开头的路径变量）。
+
+首次构建会自动生成签名密钥 `keystore.jks` 与口令文件 `keystore.properties`（两者均不入库）。
+口令也可以用环境变量覆盖：`CHRONOS_KS_PASS=xxx ./build.sh`。
+换机器构建时请把这两个文件一起带走 —— 用新密钥签出的 APK 无法覆盖安装旧版本；
+若只有 `keystore.jks` 而缺 `keystore.properties`，构建会直接报错，不会另生成新钥。
+</details>
+
+## 技术架构
+
+这个项目刻意做了一些**反潮流**的选择：
+
+- **无 Gradle** —— 整个构建是 60 行的 `build.sh`：`aapt2 → javac → d8 → zipalign → apksigner`，一条链路，全透明
+- **零依赖** —— 不用 React / Flutter / Compose，原生 `Java + WebView`，APK 不足 100 KB
+- **双保险持久化** —— `localStorage`（前端）与 `SharedPreferences`（原生）互为备份，WebView 存储被清也能恢复（卸载仍会清除，需自行导出）
+- **时间戳驱动计时** —— 计时基于 `Date.now()` 差值而非 setInterval 累加，杀进程也不丢秒数
+
+```
+chronos/
+├── app/src/main/
+│   ├── AndroidManifest.xml
+│   ├── assets/www/                   # 前端：无框架，纯 HTML/CSS/JS
+│   │   ├── index.html
+│   │   ├── styles.css                #   响应式 + CSS 变量主题系统
+│   │   └── app.js                    #   状态机：计划 / 计时 / 统计
+│   ├── java/com/dvesiz/chronos/
+│   │   ├── MainActivity.java         # WebView 宿主 + JS 桥 + Edge-to-edge
+│   │   ├── AlarmScheduler.java       # AlarmManager 提醒调度（全量重建 / 错过补发）
+│   │   ├── ReminderReceiver.java     # 到点触发通知、通知「完成」回写
+│   │   ├── NotificationHelper.java   # 通知渠道与操作按钮
+│   │   ├── FocusGuardService.java    # 极度沉浸：前台服务 + 前台应用识别 + 遮罩
+│   │   ├── LockPanel.java            # 锁定面板（全屏遮罩 UI）
+│   │   └── BootReceiver.java         # 开机 / 改时区后重建全部提醒
+│   └── res/                          # 自适应图标 / 主题资源
+├── build.sh                          # 一键构建：aapt2 + javac + d8 + apksigner
+├── docs/img/                         # README 截图与 Logo
+└── LICENSE
+```
+
+## 版本历史
+
+| 版本 | 内容 |
+|:---|:---|
+| **2.6.0** | 番茄钟加入极简专注界面（全屏计时 + 激励语）；首页橙色卡片内置换开沉浸开关；首页移除番茄钟迷你卡；导航「专注」更名「番茄钟」 |
+| **2.5.3** | 重绘通知 / 状态栏小图标：环占满 24dp、缺口收到 45°，状态栏下不再糊成一个「C」 |
+| **2.5.2** | 文档：界面截图改用平板（820×1093）布局；修复「今日」柱状被内联渐变覆盖导致高亮失效 |
+| **2.5.1** | 修复通知「完成」失效 / 「延后」不生效 / 重启后提醒复活；极度沉浸补闹钟与来电放行、到点通知、轮询下沉后台线程；统计口径与时长记录更诚实 |
+| **2.5.0** | 极度沉浸（系统级拦截）、本机账户与头像、卡片详情、示例模板瘦身 |
+| **2.2.1** | 修复：完成态任务可「继续」补时计时，累计时长不再丢失 |
+| **2.1.0** | 全新 Logo（进度环 × 当下时刻）；今日计划 / 每日模板支持删除 |
+| **2.0.0** | 视觉全面重做：明亮极简设计语言，活力橙主色，iOS 质感控件 |
+| **1.1.0** | 平板双栏适配；番茄钟；数据统计（趋势 / 分布 / 热力图） |
+| **1.0.0** | 首个版本：模板日程、时间轴、专注计时、系统提醒 |
+
+## 许可证
+
+[MIT](LICENSE) —— 学习、修改、分发均随意，欢迎 Star ⭐
+
+<div align="center">
+
+**时序 · Chronos** —— 考研路上，让每一段时间都有方向
+
+</div>

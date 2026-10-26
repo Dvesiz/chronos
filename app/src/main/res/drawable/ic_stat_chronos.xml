@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  状态栏 / 通知小图标：与启动图标同构的进度环 + 中心点。
+  24dp 下环要占满才认得清——原来半径 5.9、描边 2.1 只占画面一半，
+  缩到状态栏会糊成一个「C」。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M12.00,4.50 A7.5,7.5 0 1 1 6.70,6.70"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.1"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M12,9.3 a2.7,2.7 0 1 0 0,5.4 a2.7,2.7 0 1 0 0,-5.4 z"
+        android:fillColor="#FFFFFF" />
+</vector>

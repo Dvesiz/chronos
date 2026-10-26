@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 时序 · Chronos：进度环 + 当下时刻（与 App 内进度环同一意象）
+     安全区：中心 66dp；圆环外缘 24.5dp < 33dp -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 270° 开口进度环：从 3 点钟顺时针经 6-9-12，缺口落在右上 -->
+    <path
+        android:pathData="M75,54 A21,21 0 1 1 54,33"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <!-- 中心圆点：当下这一刻 -->
+    <path
+        android:pathData="M54,48.5 a5.5,5.5 0 1 0 0,11 a5.5,5.5 0 1 0 0,-11 z"
+        android:fillColor="#FFFFFF" />
+</vector>
