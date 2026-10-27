@@ -436,12 +436,37 @@
   </div>
 </div>
 
+<div class="pomo-exit" id="pomoExit" aria-hidden="true">
+  <div class="pomo-exit-card" role="dialog" aria-modal="true" aria-label="退出专注">
+    <div class="pomo-exit-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4v8l5 3"/><circle cx="12" cy="12" r="8.5"/></svg></div>
+    <div class="pomo-exit-kicker">FOCUS · 当前专注</div>
+    <h2>要怎么离开这一轮？</h2>
+    <p>已经专注的时间会保留在今天的投入里。</p>
+    <div class="pomo-exit-actions">
+      <button class="btn btn-ghost" id="pomoStay">留在专注</button>
+      <button class="btn btn-ghost" id="pomoLeaveFull">退出全屏</button>
+      <button class="btn btn-primary" id="pomoEnd">结束本次专注</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-layer" id="sheetLayer" aria-hidden="true">
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
   <div class="sheet-panel glass-strong" id="sheetPanel"></div>
 </div>
 
 <!-- 每日打卡：完成当天计划后的动效反馈 -->
+<div class="task-complete" id="taskComplete" aria-hidden="true">
+  <div class="task-complete-card" role="dialog" aria-modal="true" aria-label="任务完成">
+    <div class="task-complete-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg></div>
+    <div class="task-complete-kicker">TASK COMPLETE · 任务完成</div>
+    <h2 id="tcTitle">这一段完成了</h2>
+    <div class="task-complete-time" id="tcTime">专注 0 分钟</div>
+    <p id="tcNote">把这一小步记下来，继续下一段。</p>
+    <button class="btn btn-primary" id="tcClose">继续</button>
+  </div>
+</div>
+
 <div class="celebrate" id="celebrate" aria-hidden="true">
   <div class="cb-glow"></div>
   <div class="cb-confetti" id="cbConfetti" aria-hidden="true"></div>

@@ -854,6 +854,42 @@ body:not(.motion) .immerse * { animation: none !important; transition: none !imp
   .im-btn { padding: 0 24px; height: 44px; }
 }
 
+/* ============ 退出专注 / 单任务完成 ============ */
+.pomo-exit, .task-complete {
+  position: fixed; inset: 0; z-index: 150; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(12, 10, 9, .62); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  opacity: 0; visibility: hidden; transition: opacity .25s var(--ease), visibility .25s;
+}
+.pomo-exit.open, .task-complete.open { opacity: 1; visibility: visible; }
+.pomo-exit-card, .task-complete-card {
+  width: min(390px, 100%); padding: 25px 22px 20px; border-radius: 24px; background: var(--card); color: var(--ink);
+  box-shadow: 0 26px 70px rgba(0,0,0,.3); text-align: center; transform: translateY(18px) scale(.97); transition: transform .34s var(--spring);
+}
+.pomo-exit.open .pomo-exit-card, .task-complete.open .task-complete-card { transform: none; }
+.pomo-exit-mark { width: 50px; height: 50px; margin: 0 auto 14px; display:flex; align-items:center; justify-content:center; border-radius: 16px; background: var(--accent-soft); color: var(--accent); }
+.pomo-exit-mark svg { width: 25px; height: 25px; }
+.pomo-exit-kicker, .task-complete-kicker { font-size: 10px; font-weight: 800; letter-spacing: .13em; color: var(--ink-3); }
+.pomo-exit-card h2, .task-complete-card h2 { margin: 7px 0 6px; font-size: 21px; font-weight: 800; }
+.pomo-exit-card p, .task-complete-card p { margin: 0; color: var(--ink-3); font-size: 12px; line-height: 1.65; }
+.pomo-exit-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
+.pomo-exit-actions .btn { height: 44px; }
+.task-complete { z-index: 145; background: rgba(21, 30, 25, .38); }
+.task-complete-card { border: 1px solid rgba(52, 199, 89, .18); }
+.task-complete-icon { width: 52px; height: 52px; margin: 0 auto 14px; display:flex; align-items:center; justify-content:center; border-radius: 50%; background: var(--ok-soft); color: var(--ok); }
+.task-complete-icon svg { width: 28px; height: 28px; }
+.task-complete-kicker { color: var(--ok); }
+.task-complete-time { margin: 15px 0 6px; font-size: 18px; font-weight: 800; color: var(--ok); font-variant-numeric: tabular-nums; }
+.task-complete-card .btn { width: 100%; height: 44px; margin-top: 16px; background: var(--ok); box-shadow: 0 6px 16px rgba(52, 199, 89, .25); }
+.plan-choice-list { display: flex; flex-direction: column; gap: 9px; margin-top: 18px; }
+.plan-choice { display:flex; align-items:center; gap: 12px; width:100%; padding: 13px 12px; border-radius: var(--r-card); background: var(--bg-2); color:var(--ink); text-align:left; }
+.plan-choice:active { transform: scale(.985); }
+.plan-choice-icon { width: 36px; height: 36px; flex:none; display:flex; align-items:center; justify-content:center; border-radius: 11px; background:var(--accent-soft); color:var(--accent); font-weight:800; }
+.plan-choice span:nth-child(2) { flex:1; min-width:0; }
+.plan-choice b, .plan-choice small { display:block; }
+.plan-choice b { font-size: 14px; }
+.plan-choice small { margin-top: 3px; color:var(--ink-3); font-size:11px; }
+.plan-choice i { color:var(--ink-3); font-size:24px; font-style:normal; }
+
 /* ============ 弹层 ============ */
 .sheet-layer { position: fixed; inset: 0; z-index: 80; visibility: hidden; }
 .sheet-layer.open { visibility: visible; }

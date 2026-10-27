@@ -97,6 +97,7 @@ function normalizeState(s) {
     if (!rec || typeof rec !== 'object' || Array.isArray(rec)) { delete s.days[k]; return; }
     if (!Array.isArray(rec.tasks)) rec.tasks = [];
     rec.tasks = rec.tasks.filter(t => t && typeof t === 'object' && isFinite(t.start) && isFinite(t.end));
+    if (!Array.isArray(rec.partialFocus)) rec.partialFocus = [];
   });
   if (typeof s.motion !== 'boolean') s.motion = true;
   if (typeof s.remind !== 'boolean') s.remind = true;
@@ -109,6 +110,7 @@ function normalizeState(s) {
   if (!s.reviews || typeof s.reviews !== 'object' || Array.isArray(s.reviews)) s.reviews = {};
   if (!s.milestones || typeof s.milestones !== 'object' || Array.isArray(s.milestones)) s.milestones = {};
   if (!s.celebrated || typeof s.celebrated !== 'object' || Array.isArray(s.celebrated)) s.celebrated = {};
+  if (!s.pendingCelebration || typeof s.pendingCelebration !== 'object' || Array.isArray(s.pendingCelebration)) s.pendingCelebration = {};
 
   // 番茄钟
   s.pomo = s.pomo || {};
@@ -123,6 +125,9 @@ function normalizeState(s) {
   if (!p.endAt) p.endAt = null;
   if (typeof p.round !== 'number') p.round = 0;
   if (typeof p.guard !== 'boolean') p.guard = false;
+  if (!p.taskId) p.taskId = null;
+  if (typeof p.taskTitle !== 'string') p.taskTitle = '';
+  if (!p.sessionStartAt) p.sessionStartAt = null;
   return s;
 }
 
@@ -152,6 +157,7 @@ function save(immediate) {
     Object.keys(sessions).forEach(k => { if (k < cutoff) delete sessions[k]; });
     Object.keys(state.reviews || {}).forEach(k => { if (k < cutoff) delete state.reviews[k]; });
     Object.keys(state.celebrated || {}).forEach(k => { if (k < cutoff) delete state.celebrated[k]; });
+    Object.keys(state.pendingCelebration || {}).forEach(k => { if (k < cutoff) delete state.pendingCelebration[k]; });
     try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
     const n = N();
     if (n && n.saveState) {
@@ -167,7 +173,8 @@ function save(immediate) {
 /* ---------------- 当日任务 ---------------- */
 function cloneTask(t, dateK) {
   return {
-    id: t.id,
+    id: `${dateK}:${t.id}`,
+    templateId: t.id,
     title: t.title,
     subject: t.subject,
     start: t.start,
@@ -202,6 +209,12 @@ function ensureToday() {
 
 const todayRec = () => state.days[dateKey(new Date())];
 const todayKey = () => dateKey(new Date());
+function pomoStartKey() {
+  const p = state.pomo;
+  if (p.sessionStartAt) return dateKey(new Date(p.sessionStartAt));
+  return p.startAt ? dateKey(new Date(p.startAt)) : todayKey();
+}
+function pomoStartRec() { return state.days[pomoStartKey()] || null; }
 
 /**
  * 跨天结算：昨天及更早仍在跑的计时按当天 0 点截止并停下。
@@ -676,10 +689,25 @@ function shouldCelebrate() {
 }
 
 let celebrateTimer = null;
+let pendingDayCelebrate = false;
 function maybeCelebrate() {
-  if (!shouldCelebrate()) return;
-  state.celebrated[todayKey()] = Date.now();
-  save();
+  const k = todayKey();
+  const taskOpen = $('#taskComplete') && $('#taskComplete').classList.contains('open');
+  if (taskOpen) {
+    if (shouldCelebrate()) {
+      pendingDayCelebrate = true;
+      state.pendingCelebration[k] = state.pendingCelebration[k] || Date.now();
+      save();
+    }
+    return;
+  }
+  if (state.pendingCelebration[k]) {
+    pendingDayCelebrate = true;
+    clearTimeout(celebrateTimer);
+    celebrateTimer = setTimeout(openCelebrate, 480);
+    return;
+  }
+  if (pendingDayCelebrate || !shouldCelebrate()) return;
   clearTimeout(celebrateTimer);
   celebrateTimer = setTimeout(openCelebrate, 480);
 }
@@ -706,11 +734,15 @@ function buildConfetti() {
 function openCelebrate() {
   const el = $('#celebrate');
   if (!el) return;
+  const k = todayKey();
+  state.celebrated[k] = state.pendingCelebration[k] || Date.now();
+  delete state.pendingCelebration[k];
+  save(true);
   if (sheetOpen) closeSheet();
   const rec = todayRec();
   const tasks = (rec && rec.tasks) || [];
   const done = tasks.filter(t => t.status === 'done').length;
-  const actual = tasks.reduce((a, t) => a + taskSeconds(t), 0);
+  const actual = dayActualSeconds(rec);
   const streak = calcStreak();
   const week = celebratedCount(lastDays(7));
   $('#cbEyebrow').textContent = `CHECK-IN · ${todayKey().replace(/-/g, '.')}`;
@@ -763,7 +795,7 @@ function shareCelebrate() {
   const rec = todayRec();
   const tasks = (rec && rec.tasks) || [];
   const done = tasks.filter(t => t.status === 'done').length;
-  const actual = tasks.reduce((a, t) => a + taskSeconds(t), 0);
+  const actual = dayActualSeconds(rec);
   const text = `时序 · 今日打卡\n${todayKey()}\n完成 ${done}/${tasks.length} 个时段 · 专注 ${hText(actual)} · 连续 ${calcStreak()} 天`;
   shareText(text, '时序 · 今日打卡');
 }
@@ -782,8 +814,39 @@ function renderGoalSettings() {
 
 
 function taskSeconds(t) {
-  const base = t.focusStart ? t.focusAcc + (Date.now() - t.focusStart) / 1000 : (t.focusAcc || 0);
+  const base = t.focusStart ? (t.focusAcc || 0) + (Date.now() - t.focusStart) / 1000 : (t.focusAcc || 0);
   return base + (t.pomoAcc || 0);
+}
+
+function dayActualSeconds(rec) {
+  if (!rec) return 0;
+  const taskTotal = (rec.tasks || []).reduce((sum, t) => sum + taskSeconds(t), 0);
+  const partialTotal = (rec.partialFocus || []).reduce((sum, s) => sum + (s.seconds || 0), 0);
+  return taskTotal + partialTotal;
+}
+
+function planTargetKey(offset) {
+  return dateKey(addDays(new Date(), Number(offset) || 0));
+}
+
+function shouldClearPomoBinding(dateK, taskId) {
+  return !!state.pomo.taskId && state.pomo.taskId === taskId && pomoStartKey() === dateK;
+}
+
+function discardNewPlanTask(dateK, taskId) {
+  const rec = state.days[dateK];
+  if (!rec) return false;
+  const original = rec.tasks.length;
+  rec.tasks = rec.tasks.filter(t => t.id !== taskId);
+  return rec.tasks.length !== original;
+}
+
+function planForDate(k) {
+  const rec = state.days[k];
+  if (rec && Array.isArray(rec.tasks)) return rec;
+  const tasks = state.template.map(t => cloneTask(t, k));
+  state.days[k] = { tasks, createdAt: Date.now() };
+  return state.days[k];
 }
 function taskEnd(t) { return t.end; }
 function taskDur(t) { return Math.max(0, taskEnd(t) - t.start); }
@@ -945,7 +1008,7 @@ function renderHome() {
   $('#pct').textContent = pct;
 
   const planned = tasks.reduce((a, t) => a + taskDur(t) * 60, 0);
-  const actual = tasks.reduce((a, t) => a + taskSeconds(t), 0);
+  const actual = dayActualSeconds(rec);
   $('#planText').textContent = hText(planned);
   $('#actualText').textContent = hText(actual);
   const scheduleMeta = $('#scheduleMeta');
@@ -1160,6 +1223,34 @@ function pauseTask(t) {
   toast('已暂停计时');
 }
 
+let taskCompleteTimer = null;
+function taskCompletionText(t) {
+  const sec = taskSeconds(t);
+  return sec > 0 ? `专注 ${Math.round(sec / 60)} 分钟` : '未计时';
+}
+function openTaskComplete(t) {
+  const el = $('#taskComplete');
+  if (!el) return;
+  $('#tcTitle').textContent = `「${t.title || '这一段'}」完成了`;
+  $('#tcTime').textContent = taskCompletionText(t);
+  $('#tcNote').textContent = pendingDayCelebrate ? '今天的安排也完成了，收下这一步。' : '把这一小步记下来，继续下一段。';
+  el.classList.add('open');
+  el.setAttribute('aria-hidden', 'false');
+  haptic('success');
+  if (navigator.vibrate) navigator.vibrate(18);
+}
+function closeTaskComplete() {
+  const el = $('#taskComplete');
+  if (!el) return;
+  el.classList.remove('open');
+  el.setAttribute('aria-hidden', 'true');
+  if (pendingDayCelebrate || state.pendingCelebration[todayKey()]) {
+    pendingDayCelebrate = false;
+    clearTimeout(taskCompleteTimer);
+    taskCompleteTimer = setTimeout(openCelebrate, 220);
+  }
+}
+
 function completeTask(t) {
   if (t.focusStart) {
     t.focusAcc = (t.focusAcc || 0) + (Date.now() - t.focusStart) / 1000;
@@ -1169,12 +1260,12 @@ function completeTask(t) {
   t.resumeDone = false;
   t.actual = (t.focusAcc || 0) + (t.pomoAcc || 0);
   t.modified = true;
+  pendingDayCelebrate = shouldCelebrate();
+  if (pendingDayCelebrate) state.pendingCelebration[todayKey()] = Date.now();
   save(true);
   syncGuard();
   checkMilestones();
-  if (navigator.vibrate) navigator.vibrate(18);
-  haptic('success');
-  toast(t.actual > 60 ? '已完成 · ' + humanSec(t.actual) : '已完成 · 这段没有计时');
+  openTaskComplete(t);
 }
 
 function undoTask(t) {
@@ -1384,7 +1475,7 @@ function openTaskSheet(t, keep) {
         haptic('light');
         if (act === 'start') { startTask(live); renderHome(); openTaskSheet(live, true); }
         else if (act === 'pause') { pauseTask(live); renderHome(); openTaskSheet(live, true); }
-        else if (act === 'done') { completeTask(live); renderHome(); openTaskSheet(live, true); }
+        else if (act === 'done') { closeSheet(); completeTask(live); renderHome(); }
         else if (act === 'undo') { undoTask(live); renderHome(); openTaskSheet(live, true); }
         else if (act === 'delay') { delayTask(live, 10); renderHome(); openTaskSheet(live, true); }
         else if (act === 'shorten') { shortenTask(live, 15); renderHome(); openTaskSheet(live, true); }
@@ -1421,15 +1512,18 @@ function writeToTemplate(t) {
 /* ---------------- 编辑面板 ---------------- */
 function openEditor(t, mode, dateVals) {
   const isTpl = mode === 'template';
+  const targetDate = dateVals || todayKey();
+  const targetLabel = targetDate === todayKey() ? '今天' : '明天';
+  const isNewTask = !isTpl && !state.days[targetDate]?.tasks.some(x => x.id === t.id);
   const startVal = hm(isTpl ? t.start : (t.start));
   const endVal = hm(taskEnd(t));
   const subjects = Object.keys(SUBJECTS).filter(s => s !== '休息');
   const html = `
     <div class="sheet-head">
       <div style="flex:1">
-        <div class="sheet-eyebrow">${isTpl ? 'TEMPLATE · 每日模板' : 'EDIT · 仅修改今天'}</div>
+        <div class="sheet-eyebrow">${isTpl ? 'TEMPLATE · 每日模板' : `EDIT · 仅修改${targetLabel}`}</div>
         <h2 class="sheet-title">调整学习时段</h2>
-        <div class="sheet-meta">${isTpl ? '影响之后自动生成的日期' : '只影响今天这一份计划'}</div>
+        <div class="sheet-meta">${isTpl ? '影响之后自动生成的日期' : `只影响${targetLabel}这一份计划`}</div>
       </div>
       <button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
     </div>
@@ -1457,7 +1551,11 @@ function openEditor(t, mode, dateVals) {
       });
     };
     panel.querySelectorAll('.toggle-row .switch input').forEach(i => i.addEventListener('change', syncSwitch));
-    $('#btnCancelEdit', panel).addEventListener('click', () => { haptic('light'); closeSheet(); });
+    $('#btnCancelEdit', panel).addEventListener('click', () => {
+      haptic('light');
+      closeSheet();
+      if (isNewTask) openPlanSheet(targetDate);
+    });
     $('#btnSaveEdit', panel).addEventListener('click', () => {
       const title = $('#fTitle', panel).value.trim() || '学习任务';
       const subject = $('#fSubject', panel).value;
@@ -1476,9 +1574,12 @@ function openEditor(t, mode, dateVals) {
         toast('模板已更新 · 明天起生效');
       } else {
         Object.assign(t, { title, subject, start: st, end: en, note, reminder: remind, flex, modified: true });
-        const rec = todayRec();
-        if (rec) rec.tasks.sort((a, b) => a.start - b.start);
-        toast('今天的计划已更新');
+        const rec = state.days[targetDate];
+        if (rec) {
+          if (!rec.tasks.some(x => x.id === t.id)) rec.tasks.push(t);
+          rec.tasks.sort((a, b) => a.start - b.start);
+        }
+        toast(`${targetDate === todayKey() ? '今日' : '明日'}计划已更新`);
       }
       save(true);
       closeSheet();
@@ -1512,8 +1613,29 @@ function armDelete(btn, onConfirm) {
 
 const delIconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 12a1.6 1.6 0 0 0 1.6 1.5h5.8a1.6 1.6 0 0 0 1.6-1.5l1-12"/></svg>';
 
-function openPlanSheet() {
-  const rec = todayRec();
+function openPlanChooser() {
+  openSheet(`
+    <div class="sheet-head">
+      <div style="flex:1"><div class="sheet-eyebrow">PLAN · 编辑范围</div><h2 class="sheet-title">你要调整哪一份计划？</h2><div class="sheet-meta">今日的修改只影响当天，模板只影响之后自动生成的日期</div></div>
+      <button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </div>
+    <div class="plan-choice-list">
+      <button class="plan-choice" data-plan-offset="0"><span class="plan-choice-icon">今</span><span><b>编辑今日计划</b><small>${dateKey(new Date())} · 只影响今天</small></span><i>›</i></button>
+      <button class="plan-choice" data-plan-offset="1"><span class="plan-choice-icon">明</span><span><b>编辑明日计划</b><small>${planTargetKey(1)} · 只影响明天</small></span><i>›</i></button>
+      <button class="plan-choice" data-plan-template="1"><span class="plan-choice-icon">模</span><span><b>编辑每日模板</b><small>${state.template.length} 个时段 · 之后自动生成</small></span><i>›</i></button>
+    </div>`, panel => {
+    panel.querySelectorAll('[data-plan-offset]').forEach(btn => btn.addEventListener('click', () => {
+      const k = planTargetKey(Number(btn.dataset.planOffset));
+      planForDate(k);
+      save(true);
+      openPlanSheet(k);
+    }));
+    panel.querySelector('[data-plan-template]').addEventListener('click', () => openTemplateSheet());
+  });
+}
+
+function openPlanSheet(dateK = todayKey()) {
+  const rec = planForDate(dateK);
   const tasks = (rec.tasks || []).slice().sort((a, b) => a.start - b.start);
   const rows = tasks.map(t => `
     <div class="row" data-id="${t.id}" style="cursor:pointer">
@@ -1530,21 +1652,22 @@ function openPlanSheet() {
   openSheet(`
     <div class="sheet-head">
       <div style="flex:1">
-        <div class="sheet-eyebrow">TODAY · ${dateKey(new Date())}</div>
-        <h2 class="sheet-title">今日计划</h2>
+        <div class="sheet-eyebrow">PLAN · ${dateK}</div>
+        <h2 class="sheet-title">${dateK === todayKey() ? '今日计划' : '明日计划'}</h2>
         <div class="sheet-meta">${tasks.length} 个学习时段 · 点任意一项调整</div>
       </div>
       <button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
     </div>
     <div class="list-card" style="margin-top:14px">${rows}</div>
     <div class="sheet-actions">
+      <button class="btn btn-ghost" style="flex:1" id="addDaySlot">添加时段</button>
       <button class="btn btn-ghost" style="flex:1" id="toTemplate">编辑每日模板</button>
-      <button class="btn btn-primary" style="flex:1" id="resetDay">恢复默认计划</button>
+      <button class="btn btn-primary" style="flex:1" id="resetDay">从模板重置本日</button>
     </div>`, panel => {
     panel.querySelectorAll('.row[data-id]').forEach(row => {
       row.addEventListener('click', () => {
         const t = rec.tasks.find(x => x.id === row.dataset.id);
-        if (t) openTaskSheet(t);
+        if (t) openEditor(t, 'day', dateK);
       });
     });
     panel.querySelectorAll('.row-del').forEach(btn => {
@@ -1552,24 +1675,30 @@ function openPlanSheet() {
         e.stopPropagation();
         armDelete(btn, () => {
           rec.tasks = rec.tasks.filter(x => x.id !== btn.dataset.del);
-          if (state.pomo.taskId === btn.dataset.del) { state.pomo.taskId = null; state.pomo.taskTitle = ''; }
+          if (shouldClearPomoBinding(dateK, btn.dataset.del)) { state.pomo.taskId = null; state.pomo.taskTitle = ''; state.pomo.sessionStartAt = null; }
           save(true);
           closeSheet();
           renderHome();
           syncGuard();
-          openPlanSheet();
-          toast('已从今日计划删除');
+          openPlanSheet(dateK);
+          toast(`已从${dateK === todayKey() ? '今日' : '明日'}计划删除`);
         });
       });
     });
+    $('#addDaySlot', panel).addEventListener('click', () => {
+      const last = rec.tasks.slice().sort((a, b) => b.end - a.end)[0];
+      const start = last ? Math.min(last.end, 1380) : 480;
+      const t = cloneTask({ id: 'd' + Date.now(), title: '新的学习时段', subject: '其他', start, end: Math.min(start + 60, 1439), reminder: true, advance: 5, flex: true }, dateK);
+      t.modified = true;
+      openEditor(t, 'day', dateK);
+    });
     $('#toTemplate', panel).addEventListener('click', () => openTemplateSheet());
     $('#resetDay', panel).addEventListener('click', () => {
-      const k = todayKey();
-      state.days[k] = { tasks: state.template.map(t => cloneTask(t, k)), createdAt: Date.now() };
+      state.days[dateK] = { tasks: state.template.map(t => cloneTask(t, dateK)), createdAt: Date.now() };
       save(true);
       closeSheet();
       renderHome();
-      toast('已恢复默认计划');
+      toast(`已从每日模板重置${dateK === todayKey() ? '今日' : '明日'}计划`);
     });
   });
 }
@@ -1634,7 +1763,7 @@ function openTemplateSheet() {
       if (!rec) return;
       const dones = rec.tasks.filter(t => t.status === 'done' || t.status === 'skipped' || t.modified);
       const fresh = state.template.map(t => {
-        const kept = dones.find(d => d.id === t.id);
+        const kept = dones.find(d => d.id === t.id || d.templateId === t.id);
         return kept ? kept : cloneTask(t, k);
       });
       state.days[k] = { tasks: fresh.sort((a, b) => a.start - b.start), createdAt: Date.now() };
@@ -1695,6 +1824,7 @@ function pomoStart() {
   p.running = true;
   p.endAt = Date.now() + p.remain * 1000;
   p.startAt = Date.now() - (total - p.remain) * 1000;
+  p.sessionStartAt = p.sessionStartAt || p.startAt;
   if (p.phase === 'focus') {
     const t = pomoLinkedTask();
     // 同一任务不要同时跑两种计时，避免时长被重复计入
@@ -1726,11 +1856,47 @@ function pomoPause() {
   if (immerseOpen) renderImmerse();
 }
 
+function finishPomoEarly() {
+  const p = state.pomo;
+  const wasBreak = p.phase === 'break';
+  const total = pomoTotal();
+  const elapsed = Math.max(0, Math.min(total, total - pomoRemain()));
+  if (!wasBreak && elapsed > 0) {
+    const rec = pomoStartRec();
+    const t = rec && p.taskId ? rec.tasks.find(x => x.id === p.taskId) : null;
+    if (t) {
+      t.pomoAcc = (t.pomoAcc || 0) + elapsed;
+      t.actual = (t.focusAcc || 0) + (t.pomoAcc || 0);
+      t.modified = true;
+    } else {
+      const day = rec && (rec.partialFocus || (rec.partialFocus = []));
+      if (day) day.push({ start: p.startAt || Date.now() - elapsed * 1000, end: Date.now(), seconds: elapsed, title: p.taskTitle || '自由专注' });
+    }
+  }
+  p.running = false;
+  p.endAt = null;
+  p.startAt = null;
+  p.sessionStartAt = null;
+  p.phase = 'focus';
+  p.remain = POMO_FOCUS[p.preset] || 1500;
+  p.taskId = null;
+  p.taskTitle = '';
+  save(true);
+  syncGuard();
+  renderHome();
+  renderFocus();
+  refreshStats();
+  if (immerseOpen) closeImmerse();
+  toast(elapsed > 0 ? `已结束本次专注 · ${humanSec(elapsed)} 已计入今日` : '已结束本次专注');
+  return elapsed;
+}
+
 function pomoReset() {
   const p = state.pomo;
   p.running = false;
   p.endAt = null;
   p.startAt = null;
+  p.sessionStartAt = null;
   p.phase = 'focus';
   p.remain = pomoTotal();
   p.taskId = null;      // 重置后不再绑定旧任务
@@ -1746,6 +1912,7 @@ function pomoSkip() {
   p.running = false;
   p.endAt = null;
   p.startAt = null;
+  p.sessionStartAt = null;
   p.taskId = null;
   p.taskTitle = '';
   p.phase = p.phase === 'focus' ? 'break' : 'focus';
@@ -1767,7 +1934,7 @@ function pomoFinish() {
   const endedAt = p.endAt || Date.now();
 
   if (!wasBreak) {
-    const key = todayKey();
+    const key = pomoStartKey();
     const list = p.sessions[key] || (p.sessions[key] = []);
     list.push({
       start: p.startAt || endedAt - minutes * 60000,
@@ -1778,7 +1945,7 @@ function pomoFinish() {
     });
     p.round = (p.round || 0) + 1;
     if (p.taskId) {
-      const rec = todayRec();
+      const rec = pomoStartRec();
       const t = rec && rec.tasks.find(x => x.id === p.taskId);
       if (t) {
         t.pomoAcc = (t.pomoAcc || 0) + minutes * 60;
@@ -1790,6 +1957,7 @@ function pomoFinish() {
   p.phase = wasBreak ? 'focus' : 'break';
   p.remain = pomoTotal();
   p.startAt = null;
+  p.sessionStartAt = null;
   p.taskId = null;
   p.taskTitle = '';
   if (p.auto) {
@@ -1854,6 +2022,7 @@ function setPomoPreset(v) {
   p.running = false;
   p.endAt = null;
   p.startAt = null;
+  p.sessionStartAt = null;
   p.taskId = null;
   p.taskTitle = '';
   save(true);
@@ -1933,6 +2102,19 @@ function closeImmerse() {
   const el = $('#immerse');
   if (!el) return;
   immerseOpen = false;
+  el.classList.remove('open');
+  el.setAttribute('aria-hidden', 'true');
+}
+
+function openPomoExit() {
+  const el = $('#pomoExit');
+  if (!el) return;
+  el.classList.add('open');
+  el.setAttribute('aria-hidden', 'false');
+}
+function closePomoExit() {
+  const el = $('#pomoExit');
+  if (!el) return;
   el.classList.remove('open');
   el.setAttribute('aria-hidden', 'true');
 }
@@ -2534,7 +2716,7 @@ function daySummary(rec) {
   const done = rec.tasks.filter(t => t.status === 'done').length;
   const skipped = rec.tasks.filter(t => t.status === 'skipped').length;
   const planned = rec.tasks.reduce((a, t) => a + taskDur(t) * 60, 0);
-  const actual = rec.tasks.reduce((a, t) => a + taskSeconds(t), 0);
+  const actual = dayActualSeconds(rec);
   return { planned, actual, done, total, skipped };
 }
 
@@ -3408,8 +3590,27 @@ function boot() {
   });
   $('#imExit').addEventListener('click', () => {
     haptic('light');
+    openPomoExit();
+  });
+  $('#pomoStay').addEventListener('click', () => closePomoExit());
+  $('#pomoLeaveFull').addEventListener('click', () => {
+    closePomoExit();
     closeImmerse();
     renderFocus();
+    toast('已退出全屏 · 专注仍在继续');
+  });
+  $('#pomoEnd').addEventListener('click', () => {
+    closePomoExit();
+    finishPomoEarly();
+  });
+  $('#tcClose').addEventListener('click', () => {
+    closeTaskComplete();
+    closeSheet();
+    renderHome();
+    refreshStats();
+  });
+  $('#taskComplete').addEventListener('click', e => {
+    if (!e.target.closest('.task-complete-card')) closeTaskComplete();
   });
   $$('#pomoPresets button').forEach(b => {
     b.addEventListener('click', () => setPomoPreset(Number(b.dataset.preset)));
@@ -3431,7 +3632,7 @@ function boot() {
   $$('.tab').forEach(tab => {
     tab.addEventListener('click', () => { haptic('light'); switchTab(Number(tab.dataset.tab)); });
   });
-  $('#editPlanBtn').addEventListener('click', () => { haptic('light'); openPlanSheet(); });
+  $('#editPlanBtn').addEventListener('click', () => { haptic('light'); openPlanChooser(); });
   $('#sheetBackdrop').addEventListener('click', () => { haptic('light'); closeSheet(); });
   bindDetailCards();
 
