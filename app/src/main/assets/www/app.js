@@ -2550,21 +2550,25 @@ function renderCalendar() {
   const startDow = (new Date(year, month, 1).getDay() + 6) % 7;  // 周一 = 0
   const isCurrent = year === now.getFullYear() && month === now.getMonth();
 
-  const secs = [0];
+  const summaries = [null];
+  let checks = 0, monthSec = 0, monthDone = 0, monthTotal = 0;
   for (let d = 1; d <= daysInMonth; d++) {
-    secs[d] = daySummary(state.days[dateKey(new Date(year, month, d))]).actual;
+    const k = dateKey(new Date(year, month, d));
+    const s = daySummary(state.days[k]);
+    summaries[d] = s;
+    monthSec += s.actual;
+    monthDone += s.done;
+    monthTotal += s.total;
   }
-  const max = Math.max(1, ...secs.slice(1));
+  const max = Math.max(1, ...summaries.slice(1).map(s => s.actual));
+  const monthRate = monthTotal ? Math.round(monthDone / monthTotal * 100) : 0;
 
   let cells = '';
-  let checks = 0;
-  let monthSec = 0;
   for (let i = 0; i < startDow; i++) cells += '<span class="cal-day out"></span>';
   for (let d = 1; d <= daysInMonth; d++) {
     const dayDate = new Date(year, month, d);
     const k = dateKey(dayDate);
-    const sec = secs[d];
-    monthSec += sec;
+    const sec = summaries[d].actual;
     const checked = isCheckedIn(k);
     if (checked) checks++;
     let lvl = '';
@@ -2592,12 +2596,23 @@ function renderCalendar() {
         <button class="cal-btn" id="calNext" aria-label="下个月" ${isCurrent ? 'disabled' : ''}>›</button>
       </div>
     </div>
-    <div class="cal-month">${year} 年 ${month + 1} 月</div>
-    <div class="cal-grid cal-dows">${['一', '二', '三', '四', '五', '六', '日'].map(x => `<span class="cal-dow">${x}</span>`).join('')}</div>
-    <div class="cal-grid">${cells}</div>
-    <div class="cal-foot">
-      <span>本月打卡 <b>${checks}</b> 天 · ${hText(monthSec)}</span>
-      <span class="cal-legend"><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i> 投入</span>
+    <div class="cal-layout">
+      <div class="cal-main">
+        <div class="cal-month">${year} 年 ${month + 1} 月</div>
+        <div class="cal-grid cal-dows">${['一', '二', '三', '四', '五', '六', '日'].map(x => `<span class="cal-dow">${x}</span>`).join('')}</div>
+        <div class="cal-grid">${cells}</div>
+      </div>
+      <div class="cal-side">
+        <div class="cal-side-title">本月概览</div>
+        <div class="cal-summary-grid">
+          <div class="cal-stat"><b>${checks}</b><span>打卡天数</span></div>
+          <div class="cal-stat"><b>${hText(monthSec)}</b><span>实际投入</span></div>
+          <div class="cal-stat"><b>${monthRate}%</b><span>计划完成率</span></div>
+          <div class="cal-stat"><b>${calcStreak()}</b><span>当前连续</span></div>
+        </div>
+        <div class="cal-legend"><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i><span>投入强度</span></div>
+        <div class="cal-tip">橙点为打卡 · 点日期查看当天记录</div>
+      </div>
     </div>`;
 
   $('#calPrev', el).addEventListener('click', () => {
@@ -2651,6 +2666,10 @@ let statsRange = 7;
 
 /** 统计页不可见时不必重算：切到统计页时会整体重绘 */
 function refreshStats() { if (tabIndex === 2) renderStats(); }
+
+function buildExportFilename(date = new Date()) {
+  return `chronos-${dateKey(date)}.json`;
+}
 
 function renderStats() {
   const range = statsRange;
@@ -3113,14 +3132,17 @@ function bindSettings() {
       user: state.user ? Object.assign({}, state.user, { avatarData: null }) : null
     });
     const data = JSON.stringify({ app: 'Chronos', version: 1, exportedAt: new Date().toISOString(), state: snapshot }, null, 2);
+    const name = buildExportFilename();
     const n = N();
-    if (n && n.share) n.share(data);
-    else {
+    if (n && n.exportFile) {
+      n.exportFile(name, data);
+      toast('选择保存位置…');
+    } else {
       const blob = new Blob([data], { type: 'application/json' });
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = 'chronos-data.json'; a.click();
+      a.href = URL.createObjectURL(blob); a.download = name; a.click();
+      toast('学习数据已导出为文件');
     }
-    toast('学习数据已准备导出');
   });
   $('#btnImport').addEventListener('click', () => {
     haptic('light');

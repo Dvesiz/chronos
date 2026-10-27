@@ -34,6 +34,8 @@ public class MainActivity extends Activity {
     private String pendingJson = null;
     private int lastTop = -1, lastBottom = -1, lastIme = -1;
     private android.webkit.ValueCallback<Uri[]> fileCallback;
+    private String pendingExportName = null;
+    private String pendingExportData = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -376,6 +378,26 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** 把 JSON 存成真正的文件：系统「保存为」面板，用户自己选位置与文件名 */
+        @JavascriptInterface
+        public void exportFile(String name, String content) {
+            pendingExportName = (name == null || name.trim().isEmpty()) ? "chronos-data.json" : name.trim();
+            pendingExportData = content == null ? "" : content;
+            runOnUiThread(() -> {
+                try {
+                    Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("application/json");
+                    i.putExtra(Intent.EXTRA_TITLE, pendingExportName);
+                    startActivityForResult(i, 34);
+                } catch (Exception e) {
+                    pendingExportData = null;
+                    android.widget.Toast.makeText(MainActivity.this, "无法打开保存面板",
+                            android.widget.Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
         @JavascriptInterface
         public void setTheme(String theme) {
             runOnUiThread(() -> {
@@ -547,6 +569,25 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 34) {
+            // 导出：把待写的 JSON 落到用户选的文件里
+            if (resultCode == RESULT_OK && data != null && data.getData() != null && pendingExportData != null) {
+                try (java.io.OutputStream os = getContentResolver().openOutputStream(data.getData())) {
+                    if (os != null) {
+                        os.write(pendingExportData.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        os.flush();
+                        android.widget.Toast.makeText(this, "已保存 " + pendingExportName,
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    android.widget.Toast.makeText(this, "保存失败", android.widget.Toast.LENGTH_SHORT).show();
+                }
+            } else if (resultCode != RESULT_OK) {
+                android.widget.Toast.makeText(this, "已取消导出", android.widget.Toast.LENGTH_SHORT).show();
+            }
+            pendingExportData = null;
+            return;
+        }
         if (requestCode == 33) {
             Uri[] result = null;
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {

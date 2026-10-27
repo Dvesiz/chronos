@@ -1009,7 +1009,7 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
   .home-side { grid-area: side; }
   .focus-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 20px; align-items: start; }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  .stat-hero, .goal-card, .stats-grid [data-detail="daily"], .report-card { grid-column: span 2; }
+  .calendar-card, .stat-hero, .goal-card, .stats-grid [data-detail="daily"], .stats-grid [data-detail="category"], .report-card { grid-column: span 2; }
   .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
   .tabbar {
     left: 50%; right: auto; bottom: calc(var(--sab) + 22px);
@@ -1037,14 +1037,9 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 
 @media (min-width: 900px) {
   .scroll { padding-left: 44px; padding-right: 44px; }
-  /* 6 列栅格：两行 3+3，图表 4+2 / 2+4，避免 3 等分时出现空洞 */
   .stats-grid { grid-template-columns: repeat(6, 1fr); }
-  .stat-hero { grid-column: span 3; }
-  .goal-card { grid-column: span 3; }
-  .stats-grid [data-detail="daily"] { grid-column: span 4; }
-  .stats-grid [data-detail="category"] { grid-column: span 2; }
-  .calendar-card { grid-column: span 2; }
-  .report-card { grid-column: span 4; }
+  .calendar-card, .stat-hero { grid-column: span 6; }
+  .goal-card, .stats-grid [data-detail="daily"], .stats-grid [data-detail="category"], .report-card { grid-column: span 3; }
   .sheet-panel { width: 640px; }
 }
 
@@ -1324,7 +1319,19 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 
 /* ============ 打卡日历 ============ */
 .calendar-card { padding: var(--pad-card); }
-.cal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.cal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.cal-layout { display: flex; align-items: stretch; gap: 24px; }
+.cal-main { flex: 0 1 500px; min-width: 0; }
+.cal-side {
+  flex: 1; min-width: 190px;
+  border-left: 1px solid var(--hairline);
+  padding-left: 24px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.cal-side-title { margin-bottom: 14px; font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.cal-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 12px; }
+.cal-stat b { display: block; font-size: 27px; line-height: 1.05; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink); }
+.cal-stat span { display: block; margin-top: 4px; font-size: 11px; color: var(--ink-3); }
 .cal-nav { display: flex; gap: 6px; }
 .cal-btn {
   width: 30px; height: 30px; border-radius: 10px;
@@ -1362,17 +1369,31 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
   background: var(--accent);
 }
 .cal-day.l3.checked::after, .cal-day.l4.checked::after { background: #fff; }
-.cal-foot {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin-top: 10px; font-size: 10.5px; color: var(--ink-3);
-}
-.cal-foot b { color: var(--ink-2); font-weight: 700; }
-.cal-legend { display: flex; align-items: center; gap: 4px; }
-.cal-legend i { width: 9px; height: 9px; border-radius: 3px; background: var(--bg-2); }
+.cal-legend { display: flex; align-items: center; gap: 5px; margin-top: 16px; font-size: 10.5px; color: var(--ink-3); }
+.cal-legend i { width: 10px; height: 10px; border-radius: 3px; background: var(--bg-2); }
 .cal-legend i.h1 { background: var(--accent-soft); }
 .cal-legend i.h2 { background: rgba(255, 90, 31, .28); }
 .cal-legend i.h3 { background: rgba(255, 90, 31, .58); }
 .cal-legend i.h4 { background: var(--accent); }
+.cal-tip { margin-top: 8px; font-size: 10.5px; color: var(--ink-3); }
+
+@media (min-width: 760px) and (max-width: 899px) {
+  .cal-layout { gap: 18px; }
+  .cal-main { flex-basis: 420px; }
+  .cal-side { min-width: 160px; padding-left: 18px; }
+  .cal-stat b { font-size: 23px; }
+}
+
+@media (max-width: 759px) {
+  .cal-layout { flex-direction: column; gap: 14px; }
+  .cal-main { flex: auto; max-width: none; }
+  .cal-side { flex: auto; min-width: 0; border-left: 0; border-top: 1px solid var(--hairline); padding: 14px 0 0; }
+  .cal-side-title { margin-bottom: 10px; }
+  .cal-summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .cal-stat b { font-size: 18px; }
+  .cal-stat span { font-size: 10px; }
+  .cal-legend { margin-top: 10px; }
+}
 
 .weekly-text {
   margin: 14px 0 0;
