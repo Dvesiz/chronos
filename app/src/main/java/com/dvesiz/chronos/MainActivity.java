@@ -98,10 +98,27 @@ public class MainActivity extends Activity {
                 }
                 fileCallback = cb;
                 try {
+                    // 按 input 的 accept 决定选图片还是数据文件（头像 / 导入 JSON 共用）
+                    boolean wantsJson = false;
+                    String[] accepts = params.getAcceptTypes();
+                    if (accepts != null) {
+                        for (String a : accepts) {
+                            if (a != null && a.toLowerCase(java.util.Locale.US).contains("json")) {
+                                wantsJson = true;
+                                break;
+                            }
+                        }
+                    }
                     Intent i = new Intent(Intent.ACTION_GET_CONTENT);
                     i.addCategory(Intent.CATEGORY_OPENABLE);
-                    i.setType("image/*");
-                    startActivityForResult(Intent.createChooser(i, "选择头像"), 33);
+                    if (wantsJson) {
+                        i.setType("*/*");
+                        i.putExtra(Intent.EXTRA_MIME_TYPES,
+                                new String[]{"application/json", "text/plain", "application/octet-stream"});
+                    } else {
+                        i.setType("image/*");
+                    }
+                    startActivityForResult(Intent.createChooser(i, wantsJson ? "选择数据文件" : "选择头像"), 33);
                     return true;
                 } catch (Exception e) {
                     fileCallback = null;

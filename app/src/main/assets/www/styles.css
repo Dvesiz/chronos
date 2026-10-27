@@ -1043,7 +1043,7 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
   .goal-card { grid-column: span 3; }
   .stats-grid [data-detail="daily"] { grid-column: span 4; }
   .stats-grid [data-detail="category"] { grid-column: span 2; }
-  .stats-grid [data-detail="rhythm"] { grid-column: span 2; }
+  .calendar-card { grid-column: span 2; }
   .report-card { grid-column: span 4; }
   .sheet-panel { width: 640px; }
 }
@@ -1321,6 +1321,58 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 }
 .ms-chip.on { background: var(--accent-soft); color: var(--accent-deep); }
 .goal-note { margin-top: 10px; font-size: 11.5px; color: var(--ink-3); }
+
+/* ============ 打卡日历 ============ */
+.calendar-card { padding: var(--pad-card); }
+.cal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.cal-nav { display: flex; gap: 6px; }
+.cal-btn {
+  width: 30px; height: 30px; border-radius: 10px;
+  background: var(--bg-2); color: var(--ink-2);
+  font-size: 16px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+[data-theme="dark"] .cal-btn { background: var(--card-2); }
+.cal-btn:disabled { opacity: .35; }
+.cal-month { margin-bottom: 8px; font-size: 12px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cal-dows { margin-bottom: 5px; }
+.cal-dow { text-align: center; font-size: 10px; font-weight: 600; color: var(--ink-3); }
+.cal-day {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 9px;
+  background: var(--bg-2);
+  color: var(--ink-2);
+  font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+[data-theme="dark"] .cal-day { background: var(--card-2); }
+.cal-day.out { background: transparent; }
+.cal-day.future { opacity: .38; }
+.cal-day.l1 { background: var(--accent-soft); }
+.cal-day.l2 { background: rgba(255, 90, 31, .28); }
+.cal-day.l3 { background: rgba(255, 90, 31, .58); color: #fff; }
+.cal-day.l4 { background: var(--accent); color: #fff; }
+.cal-day.today { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cal-day.checked::after {
+  content: ''; position: absolute; bottom: 4px;
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--accent);
+}
+.cal-day.l3.checked::after, .cal-day.l4.checked::after { background: #fff; }
+.cal-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 10px; font-size: 10.5px; color: var(--ink-3);
+}
+.cal-foot b { color: var(--ink-2); font-weight: 700; }
+.cal-legend { display: flex; align-items: center; gap: 4px; }
+.cal-legend i { width: 9px; height: 9px; border-radius: 3px; background: var(--bg-2); }
+.cal-legend i.h1 { background: var(--accent-soft); }
+.cal-legend i.h2 { background: rgba(255, 90, 31, .28); }
+.cal-legend i.h3 { background: rgba(255, 90, 31, .58); }
+.cal-legend i.h4 { background: var(--accent); }
 
 .weekly-text {
   margin: 14px 0 0;

@@ -223,17 +223,7 @@
             <div class="subject-list" id="subjectList"></div>
           </div>
 
-          <div class="chart-card glass tap-card" data-detail="rhythm">
-            <div class="card-head">
-              <div>
-                <div class="micro-label">30 DAY RHYTHM</div>
-                <h2 class="card-title">学习节奏</h2>
-              </div>
-              <div class="chart-legend">近 30 天</div>
-            </div>
-            <div class="heatmap" id="heatmap"></div>
-            <div class="heat-legend"><span>少</span><i class="h0"></i><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i><span>多</span></div>
-          </div>
+          <div class="chart-card glass calendar-card" id="calendarCard"></div>
 
           <div class="report-card glass" id="reportCard"></div>
         </div>
@@ -363,6 +353,12 @@
                 <button class="pill-btn" id="btnExport">导出</button>
               </div>
               <div class="row">
+                <div class="row-icon icon-violet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 20V9M8 13l4-4 4 4"/><path d="M5 5h14"/></svg></div>
+                <div class="row-body"><div class="row-title">导入学习数据</div><div class="row-sub">读取导出的 JSON；会覆盖当前数据</div></div>
+                <button class="pill-btn" id="btnImport">导入</button>
+              </div>
+              <input type="file" id="importFile" accept="application/json,.json" hidden>
+              <div class="row">
                 <div class="row-icon icon-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3v12"/><path d="M8 9l4-4 4 4"/><path d="M5 21h14"/><path d="M9 17h6"/></svg></div>
                 <div class="row-body"><div class="row-title">演示数据</div><div class="row-sub">填充近 7 天示例，仅影响本机</div></div>
                 <button class="pill-btn" id="btnDemo">填充</button>
@@ -385,7 +381,7 @@
               </div>
               <div class="about-title">时序 · Chronos</div>
               <div class="about-sub">让每一段时间，都有明确的方向。</div>
-              <div class="about-ver" id="aboutVer">Version 2.6.5 · 个人版</div>
+              <div class="about-ver" id="aboutVer">Version 2.6.6 · 个人版</div>
               <div class="about-hint" id="envHint"></div>
             </div>
           </div>

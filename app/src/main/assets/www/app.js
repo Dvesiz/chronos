@@ -70,6 +70,11 @@ let state = loadState();
 function loadState() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
+  return normalizeState(s);
+}
+
+/** 把任意来源的数据补全成可用的 state（本地读取 / 导入共用） */
+function normalizeState(s) {
   // 只有「完全没有存档」才回退到默认值：模板被删空是合法状态，
   // 不能因此把 days / 番茄记录等历史数据一起丢掉。
   if (!s || typeof s !== 'object' || Array.isArray(s)) {
@@ -84,7 +89,15 @@ function loadState() {
     };
   }
   if (!Array.isArray(s.template)) s.template = defaultTemplate();
+  s.template = s.template.filter(t => t && typeof t === 'object' && isFinite(t.start) && isFinite(t.end));
   s.days = s.days || {};
+  // 导入的数据可能不干净：丢掉坏记录，别让后面的渲染直接崩掉
+  Object.keys(s.days).forEach(k => {
+    const rec = s.days[k];
+    if (!rec || typeof rec !== 'object' || Array.isArray(rec)) { delete s.days[k]; return; }
+    if (!Array.isArray(rec.tasks)) rec.tasks = [];
+    rec.tasks = rec.tasks.filter(t => t && typeof t === 'object' && isFinite(t.start) && isFinite(t.end));
+  });
   if (typeof s.motion !== 'boolean') s.motion = true;
   if (typeof s.remind !== 'boolean') s.remind = true;
   if (!s.advance && s.advance !== 0) s.advance = 5;
@@ -111,6 +124,21 @@ function loadState() {
   if (typeof p.round !== 'number') p.round = 0;
   if (typeof p.guard !== 'boolean') p.guard = false;
   return s;
+}
+
+/** 导入导出的 JSON：覆盖当前数据，先在本机留一份备份 */
+function importState(raw) {
+  let obj = raw;
+  if (obj && typeof obj === 'object' && obj.app === 'Chronos' && obj.state) obj = obj.state;
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('文件内容不是有效的 JSON 数据');
+  if (!obj.days && !Array.isArray(obj.template)) throw new Error('缺少计划或学习记录');
+  if (!confirm('导入会覆盖当前全部数据（计划、统计、设置），确定继续吗？')) return null;
+  try {
+    localStorage.setItem('chronos.state.before-import', localStorage.getItem(STORE) || '');
+  } catch (e) {}
+  state = normalizeState(obj);
+  save(true);
+  return state;
 }
 
 let saveTimer = null;
@@ -2498,6 +2526,127 @@ function lastDays(n) {
   return out;
 }
 
+/* ---------------- 打卡日历 ---------------- */
+let calDate = new Date();
+calDate.setDate(1);
+
+/** 打卡判定：新数据看 celebrated，历史数据按「全部处理完」反推 */
+function isCheckedIn(k) {
+  if (state.celebrated[k]) return true;
+  const rec = state.days[k];
+  if (!rec || !rec.tasks || !rec.tasks.length) return false;
+  const done = rec.tasks.filter(t => t.status === 'done').length;
+  const skipped = rec.tasks.filter(t => t.status === 'skipped').length;
+  return done > 0 && done + skipped === rec.tasks.length;
+}
+
+function renderCalendar() {
+  const el = $('#calendarCard');
+  if (!el) return;
+  const now = new Date();
+  const year = calDate.getFullYear();
+  const month = calDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startDow = (new Date(year, month, 1).getDay() + 6) % 7;  // 周一 = 0
+  const isCurrent = year === now.getFullYear() && month === now.getMonth();
+
+  const secs = [0];
+  for (let d = 1; d <= daysInMonth; d++) {
+    secs[d] = daySummary(state.days[dateKey(new Date(year, month, d))]).actual;
+  }
+  const max = Math.max(1, ...secs.slice(1));
+
+  let cells = '';
+  let checks = 0;
+  let monthSec = 0;
+  for (let i = 0; i < startDow; i++) cells += '<span class="cal-day out"></span>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayDate = new Date(year, month, d);
+    const k = dateKey(dayDate);
+    const sec = secs[d];
+    monthSec += sec;
+    const checked = isCheckedIn(k);
+    if (checked) checks++;
+    let lvl = '';
+    if (sec > 0) {
+      const r = sec / max;
+      lvl = r > .8 ? 'l4' : r > .55 ? 'l3' : r > .28 ? 'l2' : 'l1';
+    }
+    const isToday = k === todayKey();
+    const future = dayDate.getTime() > now.getTime() && !isToday;
+    cells += `<button class="cal-day ${lvl} ${checked ? 'checked' : ''} ${isToday ? 'today' : ''} ${future ? 'future' : ''}"
+      data-date="${k}" aria-label="${k}${checked ? ' 已打卡' : ''}">${d}</button>`;
+  }
+  const total = startDow + daysInMonth;
+  const tail = (7 - total % 7) % 7;
+  for (let i = 0; i < tail; i++) cells += '<span class="cal-day out"></span>';
+
+  el.innerHTML = `
+    <div class="cal-head">
+      <div>
+        <div class="micro-label">CHECK-IN CALENDAR</div>
+        <h2 class="card-title">打卡日历</h2>
+      </div>
+      <div class="cal-nav">
+        <button class="cal-btn" id="calPrev" aria-label="上个月">‹</button>
+        <button class="cal-btn" id="calNext" aria-label="下个月" ${isCurrent ? 'disabled' : ''}>›</button>
+      </div>
+    </div>
+    <div class="cal-month">${year} 年 ${month + 1} 月</div>
+    <div class="cal-grid cal-dows">${['一', '二', '三', '四', '五', '六', '日'].map(x => `<span class="cal-dow">${x}</span>`).join('')}</div>
+    <div class="cal-grid">${cells}</div>
+    <div class="cal-foot">
+      <span>本月打卡 <b>${checks}</b> 天 · ${hText(monthSec)}</span>
+      <span class="cal-legend"><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i> 投入</span>
+    </div>`;
+
+  $('#calPrev', el).addEventListener('click', () => {
+    haptic('light');
+    calDate.setMonth(calDate.getMonth() - 1);
+    renderCalendar();
+  });
+  $('#calNext', el).addEventListener('click', () => {
+    if (isCurrent) return;
+    haptic('light');
+    calDate.setMonth(calDate.getMonth() + 1);
+    renderCalendar();
+  });
+  el.querySelectorAll('.cal-day[data-date]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      haptic('light');
+      openDaySheet(btn.dataset.date);
+    });
+  });
+}
+
+function openDaySheet(k) {
+  const rec = state.days[k];
+  const s = daySummary(rec);
+  const tasks = (rec && rec.tasks) || [];
+  const done = tasks.filter(t => t.status === 'done').length;
+  const skipped = tasks.filter(t => t.status === 'skipped').length;
+  const rv = state.reviews[k];
+  const checked = isCheckedIn(k);
+  const d = parseKey(k);
+  openSheet(`
+    <div class="sheet-head">
+      <div style="flex:1">
+        <div class="sheet-eyebrow">${k}</div>
+        <h2 class="sheet-title">${d.getMonth() + 1} 月 ${d.getDate()} 日 · ${DOW_CN[d.getDay()]}</h2>
+        <div class="sheet-meta">${checked ? '已打卡 · ' : ''}实际 ${hText(s.actual)} · 完成 ${done}/${tasks.length}${skipped ? ' · 跳过 ' + skipped : ''}</div>
+      </div>
+      <button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </div>
+    ${rv && rv.text ? `<div class="sheet-note">${esc(rv.text)}</div>` : ''}
+    <div class="report-list" style="margin-top:16px">
+      <div class="report-row"><span>计划投入</span><b>${hText(s.planned)}</b></div>
+      <div class="report-row"><span>实际投入</span><b>${hText(s.actual)}</b></div>
+      <div class="report-row"><span>完成率</span><b>${s.total ? Math.round(s.done / s.total * 100) : 0}%</b></div>
+      <div class="report-row"><span>番茄</span><b>${(state.pomo.sessions[k] || []).length} 个</b></div>
+    </div>
+    <div class="detail-note">${checked ? '这天完成了当日计划，已计入打卡。' : '这天没有完成全部计划，未打卡。'}</div>`);
+}
+
 let statsRange = 7;
 
 /** 统计页不可见时不必重算：切到统计页时会整体重绘 */
@@ -2590,20 +2739,6 @@ function renderStats() {
     ? '共 ' + Math.round(subjArr.reduce((a, x) => a + x.sec, 0) / 3600) + ' 小时'
     : '暂无数据';
 
-  // 30 天热力
-  const hk = lastDays(30);
-  const hact = hk.map(k => daySummary(state.days[k]).actual);
-  const hmax = Math.max(1, ...hact);
-  $('#heatmap').innerHTML = hk.map((k, i) => {
-    const sec = hact[i];
-    let lvl = '';
-    if (sec > 0) {
-      const r = sec / hmax;
-      lvl = r > .8 ? 'h4' : r > .55 ? 'h3' : r > .28 ? 'h2' : 'h1';
-    }
-    return `<div class="heat-cell ${lvl} ${k === todayKey() ? 'is-today' : ''}" title="${k} · ${hText(sec)}"></div>`;
-  }).join('');
-
   // 与上一周期对比
   const prevKeys = lastDays(range * 2).slice(0, range);
   const prevActual = prevKeys.reduce((a, k) => a + daySummary(state.days[k]).actual, 0);
@@ -2633,6 +2768,7 @@ function renderStats() {
     ${state.demo ? '<div class="report-row" style="margin-top:12px;font-size:10px;color:var(--ink-3)">含演示数据 · 可在设置中清除</div>' : ''}`;
 
   renderGoalCard();
+  renderCalendar();
 
   setTimeout(() => {
     $$('#bars .bar-fill').forEach(b => { b.style.height = b.dataset.h + '%'; });
@@ -2985,6 +3121,38 @@ function bindSettings() {
       a.href = URL.createObjectURL(blob); a.download = 'chronos-data.json'; a.click();
     }
     toast('学习数据已准备导出');
+  });
+  $('#btnImport').addEventListener('click', () => {
+    haptic('light');
+    $('#importFile').click();
+  });
+  $('#importFile').addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      toast('文件太大，应该不是导出的数据');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(String(reader.result));
+        const ok = importState(data);
+        if (ok) {
+          toast('导入成功 · 正在重新加载');
+          setTimeout(() => { try { location.reload(); } catch (err) {} }, 650);
+        }
+      } catch (err) {
+        toast('导入失败：' + ((err && err.message) || '文件格式不对'));
+      }
+      e.target.value = '';
+    };
+    reader.onerror = () => {
+      toast('读取文件失败');
+      e.target.value = '';
+    };
+    reader.readAsText(file);
   });
   $('#btnDemo').addEventListener('click', () => {
     seedDemo(); toast('已填充近 7 天演示数据'); refreshStats(); renderHome();
