@@ -95,6 +95,7 @@ function loadState() {
   if (typeof s.goalWeekly !== 'number' || s.goalWeekly < 0 || !isFinite(s.goalWeekly)) s.goalWeekly = 0;
   if (!s.reviews || typeof s.reviews !== 'object' || Array.isArray(s.reviews)) s.reviews = {};
   if (!s.milestones || typeof s.milestones !== 'object' || Array.isArray(s.milestones)) s.milestones = {};
+  if (!s.celebrated || typeof s.celebrated !== 'object' || Array.isArray(s.celebrated)) s.celebrated = {};
 
   // 番茄钟
   s.pomo = s.pomo || {};
@@ -122,6 +123,7 @@ function save(immediate) {
     const sessions = (state.pomo && state.pomo.sessions) || {};
     Object.keys(sessions).forEach(k => { if (k < cutoff) delete sessions[k]; });
     Object.keys(state.reviews || {}).forEach(k => { if (k < cutoff) delete state.reviews[k]; });
+    Object.keys(state.celebrated || {}).forEach(k => { if (k < cutoff) delete state.celebrated[k]; });
     try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
     const n = N();
     if (n && n.saveState) {
@@ -630,6 +632,95 @@ function openExamSheet() {
     });
   });
 }
+/* ---------------- 每日打卡 ---------------- */
+function celebratedCount(days) {
+  return (days || []).filter(k => state.celebrated[k]).length;
+}
+
+/** 当天计划全部处理完（完成或跳过）且至少完成一项，并且今天还没打过卡 */
+function shouldCelebrate() {
+  const rec = todayRec();
+  if (!rec || state.celebrated[todayKey()]) return false;
+  const tasks = rec.tasks || [];
+  if (!tasks.length) return false;
+  const done = tasks.filter(t => t.status === 'done').length;
+  const skipped = tasks.filter(t => t.status === 'skipped').length;
+  return done > 0 && done + skipped === tasks.length;
+}
+
+let celebrateTimer = null;
+function maybeCelebrate() {
+  if (!shouldCelebrate()) return;
+  state.celebrated[todayKey()] = Date.now();
+  save();
+  clearTimeout(celebrateTimer);
+  celebrateTimer = setTimeout(openCelebrate, 480);
+}
+
+function buildConfetti() {
+  const box = $('#cbConfetti');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!state.motion) return;
+  const colors = ['#ff5a1f', '#ffb26b', '#3478f6', '#7b52dd', '#1fae6e', '#f59e0b', '#f43f75', '#1a9ec0'];
+  for (let i = 0; i < 30; i++) {
+    const p = document.createElement('i');
+    p.style.setProperty('--x', (Math.random() * 100).toFixed(1) + '%');
+    p.style.setProperty('--c', colors[i % colors.length]);
+    p.style.setProperty('--w', (4 + Math.random() * 5).toFixed(1) + 'px');
+    p.style.setProperty('--h', (7 + Math.random() * 9).toFixed(1) + 'px');
+    p.style.setProperty('--rot', Math.round(Math.random() * 360) + 'deg');
+    p.style.setProperty('--d', (1.7 + Math.random() * 1.6).toFixed(2) + 's');
+    p.style.setProperty('--delay', (Math.random() * .45).toFixed(2) + 's');
+    box.appendChild(p);
+  }
+}
+
+function openCelebrate() {
+  const el = $('#celebrate');
+  if (!el) return;
+  if (sheetOpen) closeSheet();
+  const rec = todayRec();
+  const tasks = (rec && rec.tasks) || [];
+  const done = tasks.filter(t => t.status === 'done').length;
+  const actual = tasks.reduce((a, t) => a + taskSeconds(t), 0);
+  const streak = calcStreak();
+  const week = celebratedCount(lastDays(7));
+  $('#cbEyebrow').textContent = `CHECK-IN · ${todayKey().replace(/-/g, '.')}`;
+  $('#cbStats').innerHTML = `
+    <div><b>${done}/${tasks.length}</b><i>完成时段</i></div>
+    <div><b>${hText(actual)}</b><i>专注时长</i></div>
+    <div><b>${streak}</b><i>连续天数</i></div>`;
+  $('#cbNote').textContent = week > 1 ? `本周第 ${week} 次打卡 · 保持住这个节奏` : '今天这一步，算数。';
+  el.classList.add('open');
+  el.setAttribute('aria-hidden', 'false');
+  buildConfetti();
+  haptic('success');
+  if (navigator.vibrate) navigator.vibrate([18, 50, 18, 50, 28]);
+}
+
+function closeCelebrate() {
+  const el = $('#celebrate');
+  if (!el) return;
+  el.classList.remove('open');
+  el.setAttribute('aria-hidden', 'true');
+  setTimeout(() => {
+    const box = $('#cbConfetti');
+    if (box) box.innerHTML = '';
+  }, 420);
+}
+
+function shareCelebrate() {
+  const rec = todayRec();
+  const tasks = (rec && rec.tasks) || [];
+  const done = tasks.filter(t => t.status === 'done').length;
+  const actual = tasks.reduce((a, t) => a + taskSeconds(t), 0);
+  const text = `时序 · 今日打卡\n${todayKey()}\n完成 ${done}/${tasks.length} 个时段 · 专注 ${hText(actual)} · 连续 ${calcStreak()} 天`;
+  const n = N();
+  if (n && n.share) n.share(text);
+  else toast('浏览器预览无法调起分享');
+}
+
 function renderGoalSettings() {
   const examSub = $('#examSub');
   if (examSub) {
@@ -826,6 +917,7 @@ function renderHome() {
   renderCarryBanner();
   renderReviewBar();
   updateClocks();
+  maybeCelebrate();
 }
 
 function renderNow() {
@@ -3139,6 +3231,11 @@ function boot() {
   $('#btnWeekly').addEventListener('click', () => { haptic('light'); openWeeklyReport(); });
   $('#btnExam').addEventListener('click', () => { haptic('light'); openExamSheet(); });
   $('#btnGoal').addEventListener('click', () => { haptic('light'); openGoalSheet(); });
+  $('#cbClose').addEventListener('click', () => { haptic('light'); closeCelebrate(); });
+  $('#cbShare').addEventListener('click', () => { haptic('light'); shareCelebrate(); });
+  $('#celebrate').addEventListener('click', e => {
+    if (!e.target.closest('.cb-card')) closeCelebrate();
+  });
   checkMilestones(true);
 
   $$('.scroll').forEach(sc => {

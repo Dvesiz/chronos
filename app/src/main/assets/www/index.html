@@ -385,7 +385,7 @@
               </div>
               <div class="about-title">时序 · Chronos</div>
               <div class="about-sub">让每一段时间，都有明确的方向。</div>
-              <div class="about-ver" id="aboutVer">Version 2.6.4 · 个人版</div>
+              <div class="about-ver" id="aboutVer">Version 2.6.5 · 个人版</div>
               <div class="about-hint" id="envHint"></div>
             </div>
           </div>
@@ -438,6 +438,32 @@
 <div class="sheet-layer" id="sheetLayer" aria-hidden="true">
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
   <div class="sheet-panel glass-strong" id="sheetPanel"></div>
+</div>
+
+<!-- 每日打卡：完成当天计划后的动效反馈 -->
+<div class="celebrate" id="celebrate" aria-hidden="true">
+  <div class="cb-glow"></div>
+  <div class="cb-confetti" id="cbConfetti" aria-hidden="true"></div>
+  <div class="cb-card" role="dialog" aria-modal="true" aria-label="今日打卡">
+    <div class="cb-seal"><span>已<br>打卡</span></div>
+    <div class="cb-ring">
+      <svg class="cb-ring-svg" viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="cb-track" cx="60" cy="60" r="52" />
+        <circle class="cb-fill" id="cbRing" cx="60" cy="60" r="52" />
+      </svg>
+      <svg class="cb-check" viewBox="0 0 120 120" aria-hidden="true">
+        <path d="M38 62l15 15 30-33" pathLength="100" />
+      </svg>
+    </div>
+    <div class="cb-eyebrow" id="cbEyebrow">CHECK-IN · 今日打卡</div>
+    <h2 class="cb-title">今天的目标，完成了。</h2>
+    <div class="cb-stats" id="cbStats"></div>
+    <div class="cb-note" id="cbNote"></div>
+    <div class="cb-actions">
+      <button class="btn btn-primary" id="cbShare">分享今天</button>
+      <button class="btn btn-ghost" id="cbClose">收下</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>

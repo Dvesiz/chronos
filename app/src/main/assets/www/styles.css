@@ -1336,4 +1336,117 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 }
 [data-theme="dark"] .weekly-text { background: var(--card-2); }
 
+/* ============ 每日打卡动效 ============ */
+.celebrate {
+  position: fixed; inset: 0; z-index: 130;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(12, 10, 9, .58);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  opacity: 0; visibility: hidden;
+  transition: opacity .35s var(--ease), visibility .35s;
+  overflow: hidden;
+}
+.celebrate.open { opacity: 1; visibility: visible; }
+
+.cb-glow {
+  position: absolute;
+  width: min(520px, 120vw); height: min(520px, 120vw);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 90, 31, .5), transparent 68%);
+  filter: blur(6px);
+  opacity: 0; transform: scale(.6);
+  transition: opacity .7s var(--ease), transform 1.1s var(--ease);
+  pointer-events: none;
+}
+.celebrate.open .cb-glow { opacity: 1; transform: scale(1); }
+
+.cb-card {
+  position: relative; z-index: 1;
+  width: min(360px, 100%);
+  padding: 26px 22px 20px;
+  border-radius: 30px;
+  background: var(--card);
+  color: var(--ink);
+  text-align: center;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .35);
+  transform: translateY(26px) scale(.92);
+  opacity: 0;
+  transition: transform .55s var(--spring), opacity .35s var(--ease);
+}
+.celebrate.open .cb-card { transform: none; opacity: 1; }
+
+.cb-ring { position: relative; width: 108px; height: 108px; margin: 2px auto 12px; }
+.cb-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cb-ring-svg { transform: rotate(-90deg); }
+.cb-track { fill: none; stroke: var(--bg-2); stroke-width: 9; }
+.cb-fill {
+  fill: none; stroke: var(--accent); stroke-width: 9; stroke-linecap: round;
+  stroke-dasharray: 327; stroke-dashoffset: 327;
+  transition: stroke-dashoffset 1s var(--ease) .12s;
+}
+.celebrate.open .cb-fill { stroke-dashoffset: 0; }
+.cb-check path {
+  fill: none; stroke: var(--accent); stroke-width: 7;
+  stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 100; stroke-dashoffset: 100;
+  transition: stroke-dashoffset .42s var(--ease) .92s;
+}
+.celebrate.open .cb-check path { stroke-dashoffset: 0; }
+
+.cb-seal {
+  position: absolute; right: 18px; top: 18px;
+  width: 60px; height: 60px; border-radius: 50%;
+  border: 2px dashed rgba(255, 90, 31, .55);
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; line-height: 1.15; letter-spacing: .06em;
+  transform: rotate(-12deg) scale(1.7);
+  opacity: 0;
+  transition: transform .42s var(--spring) .72s, opacity .3s .72s;
+}
+.celebrate.open .cb-seal { opacity: 1; transform: rotate(-12deg) scale(1); }
+
+.cb-eyebrow {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .14em;
+  color: var(--ink-3);
+}
+.cb-title { margin: 6px 0 4px; font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+.cb-stats {
+  display: flex;
+  margin: 16px 0 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+.cb-stats div { flex: 1; min-width: 0; }
+.cb-stats b { display: block; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cb-stats i { display: block; margin-top: 2px; font-style: normal; font-size: 10.5px; color: var(--ink-3); }
+.cb-note { margin-bottom: 14px; font-size: 11.5px; color: var(--ink-3); }
+.cb-actions { display: flex; gap: 10px; }
+.cb-actions .btn { flex: 1; height: 44px; font-size: 14px; }
+
+.cb-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.cb-confetti i {
+  position: absolute; top: -8%;
+  left: var(--x);
+  width: var(--w); height: var(--h);
+  background: var(--c);
+  border-radius: 1px;
+  opacity: 0;
+  animation: confettiFall var(--d) linear var(--delay) forwards;
+}
+@keyframes confettiFall {
+  0% { opacity: 0; transform: translate3d(0, -6vh, 0) rotate(var(--rot)); }
+  8% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(-2vw, 110vh, 0) rotate(calc(var(--rot) + 680deg)); }
+}
+
+body:not(.motion) .celebrate * { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .celebrate * { animation: none !important; transition: none !important; }
+}
+
 

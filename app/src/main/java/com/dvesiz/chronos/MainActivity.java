@@ -547,6 +547,9 @@ public class MainActivity extends Activity {
         if (web != null) {
             web.evaluateJavascript(
                     "(function(){" +
+                            // 打卡动效最优先：返回键只收起它
+                            "var cb=document.getElementById('celebrate');" +
+                            "if(cb&&cb.classList.contains('open')){var c=document.getElementById('cbClose');if(c)c.click();return '1';}" +
                             // 专注界面优先：返回键只收起它，不退出 app
                             "var im=document.getElementById('immerse');" +
                             "if(im&&im.classList.contains('open')){var b=document.getElementById('imExit');if(b)b.click();return '1';}" +
