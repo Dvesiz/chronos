@@ -997,10 +997,19 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 @media (min-width: 760px) and (min-height: 600px) {
   :root { --pad-card: 22px; --gap-card: 20px; }
   .scroll { padding: calc(var(--sat) + 28px) 36px calc(var(--sab) + 128px); }
-  .home-grid { display: grid; grid-template-columns: 1fr 1.06fr; gap: var(--gap-card); align-items: start; }
+  .home-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.06fr;
+    grid-template-areas: "main exam" "main side";
+    gap: var(--gap-card);
+    align-items: start;
+  }
+  .home-main { grid-area: main; }
+  .exam-banner { grid-area: exam; }
+  .home-side { grid-area: side; }
   .focus-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 20px; align-items: start; }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  .stats-grid .span-2, .stat-hero { grid-column: span 2; }
+  .stat-hero, .goal-card, .stats-grid [data-detail="daily"], .report-card { grid-column: span 2; }
   .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
   .tabbar {
     left: 50%; right: auto; bottom: calc(var(--sab) + 22px);
@@ -1028,8 +1037,14 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 
 @media (min-width: 900px) {
   .scroll { padding-left: 44px; padding-right: 44px; }
-  .stats-grid { grid-template-columns: repeat(3, 1fr); }
-  .stats-grid .span-2, .stat-hero { grid-column: span 2; }
+  /* 6 列栅格：两行 3+3，图表 4+2 / 2+4，避免 3 等分时出现空洞 */
+  .stats-grid { grid-template-columns: repeat(6, 1fr); }
+  .stat-hero { grid-column: span 3; }
+  .goal-card { grid-column: span 3; }
+  .stats-grid [data-detail="daily"] { grid-column: span 4; }
+  .stats-grid [data-detail="category"] { grid-column: span 2; }
+  .stats-grid [data-detail="rhythm"] { grid-column: span 2; }
+  .report-card { grid-column: span 4; }
   .sheet-panel { width: 640px; }
 }
 
@@ -1235,17 +1250,22 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 .avatar-custom-btns { display: flex; flex-direction: column; gap: 8px; }
 
 /* ============ 倒计时 / 遗留 / 复盘 / 目标 ============ */
-.exam-pill {
-  display: inline-flex; align-items: center; gap: 4px;
-  margin-top: 10px; height: 27px; padding: 0 12px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-deep);
-  font-size: 12px; font-weight: 600;
+.exam-banner {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px var(--pad-card);
   cursor: pointer;
+  text-align: left;
+  background: linear-gradient(135deg, var(--accent-soft), transparent 68%), var(--card);
 }
-.exam-pill b { font-weight: 800; }
-[data-theme="dark"] .exam-pill { color: var(--accent); }
+.exam-banner .eb-main { flex: 1; min-width: 0; }
+.exam-banner .eb-title { margin-top: 2px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.exam-banner .eb-days { display: flex; align-items: baseline; gap: 4px; color: var(--accent); }
+.exam-banner .eb-days b {
+  font-size: clamp(38px, 8.5vw, 54px); font-weight: 800;
+  line-height: .9; letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+}
+.exam-banner .eb-days span { font-size: 12px; font-weight: 700; color: var(--ink-3); }
+.exam-banner .eb-date { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 .leftover-row {
   display: flex; align-items: center; gap: 8px;
@@ -1282,10 +1302,10 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 .review-bar.is-done .rv-label,
 .review-bar.is-done .rv-text { color: var(--accent-deep); }
 
-.stats-actions { display: flex; justify-content: flex-end; margin: -14px 0 18px; }
+.stats-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 24px; }
+.stats-tools .range-seg { margin: 0; }
 
 .goal-card { padding: var(--pad-card); }
-.stats-grid .span-all { grid-column: 1 / -1; }
 .goal-numbers { display: flex; align-items: baseline; gap: 8px; }
 .goal-numbers b { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 .goal-numbers span { font-size: 12px; color: var(--ink-3); }

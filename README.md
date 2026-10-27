@@ -8,7 +8,7 @@
 
 为考研冲刺打造的 Android 时间管理应用 —— 计划、专注、复盘，一个闭环。
 
-[![version](https://img.shields.io/badge/version-2.6.3-FF5A1F?style=flat-square)]()
+[![version](https://img.shields.io/badge/version-2.6.4-FF5A1F?style=flat-square)]()
 [![platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?style=flat-square)]()
 [![deps](https://img.shields.io/badge/deps-zero-0074D9?style=flat-square)]()
 [![build](https://img.shields.io/badge/build-No%20Gradle-24292E?style=flat-square)]()
@@ -152,6 +152,7 @@ chronos/
 
 | 版本 | 内容 |
 |:---|:---|
+| **2.6.4** | 统计页重排：去掉与总结重复的「深度分析」和与番茄页重复的「番茄趋势」，平板横屏改为 6 列栅格（3+3 / 4+2 / 2+4），不再留空洞；考试倒计时从星期下面移到「今日安排」上方，改成大号数字卡片；修复番茄钟「当前任务」一直停在旧任务的问题（空闲时跟随当前时段，重置 / 删除任务会解绑） |
 | **2.6.3** | 新功能：未完成任务次日遗留提示与一键顺延；每日一句复盘 + 一键生成周报分享；首页考试倒计时；本周目标进度与里程碑（累计时长 / 连续天数 / 番茄数）；2×2 桌面小组件（今日进度、下一项、倒计时、一键开始） |
 | **2.6.2** | 首页布局重排：「今日安排」标题收进卡片，平板两列卡片对齐同一条基线，卡片内边距与间距统一；小屏压缩进度卡，首屏就能看到今日安排。修复 Windows 版 aapt2 把 assets 写成反斜杠、WebView 报 `ERR_FILE_NOT_FOUND` 的问题（改用 jar 打包 assets） |
 | **2.6.1** | 省电与流畅：息屏时暂停前台应用轮询；番茄页 / 统计页改为切页时按需渲染；闹钟按签名去重，不再每次保存全量重建。修复：键盘遮挡弹层表单、返回键直达退出、跨天未停的计时无限累加、跳过 / 删除任务不停表、完成态补时暂停后退回待开始、番茄与任务计时对同一任务重复计时、详情页日均口径不一致 |

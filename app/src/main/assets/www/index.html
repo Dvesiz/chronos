@@ -27,7 +27,6 @@
             <span class="live-clock" id="liveClock">--:--</span>
           </div>
           <div class="date-line"><span id="dow">MONDAY</span><span class="sep"></span><span id="dateText">10 月 26 日</span></div>
-          <div class="exam-pill" id="examPill" hidden></div>
           <h1 id="greeting">今天，保持自己的节奏。</h1>
         </header>
 
@@ -63,6 +62,15 @@
             <section class="now-card glass" id="nowCard"></section>
 
           </div>
+
+          <section class="exam-banner glass" id="examBanner" hidden>
+            <div class="eb-main">
+              <div class="micro-label">COUNTDOWN</div>
+              <div class="eb-title" id="ebTitle">距考研</div>
+            </div>
+            <div class="eb-days"><b id="ebDays">0</b><span>天</span></div>
+            <div class="eb-date" id="ebDate"></div>
+          </section>
 
           <div class="home-side">
             <section class="schedule-card glass">
@@ -178,12 +186,12 @@
           </div>
           <div class="date-line"><span>STATISTICS</span><span class="sep"></span><span>数据统计</span></div>
           <h1>把时间，<br>变成看得见的进步。</h1>
-          <div class="seg range-seg" id="rangeSeg">
-            <button data-range="7" class="on">近 7 天</button>
-            <button data-range="30">近 30 天</button>
-            <span class="seg-glider" id="rangeGlider"></span>
-          </div>
-          <div class="stats-actions">
+          <div class="stats-tools">
+            <div class="seg range-seg" id="rangeSeg">
+              <button data-range="7" class="on">近 7 天</button>
+              <button data-range="30">近 30 天</button>
+              <span class="seg-glider" id="rangeGlider"></span>
+            </div>
             <button class="ghost-btn" id="btnWeekly">本周周报</button>
           </div>
         </header>
@@ -191,7 +199,7 @@
         <div class="stats-grid">
           <div class="stat-hero glass tap-card" id="statHero" data-detail="overview"></div>
 
-          <section class="goal-card glass span-all" id="goalCard"></section>
+          <section class="goal-card glass" id="goalCard"></section>
 
           <div class="chart-card glass tap-card" data-detail="daily">
             <div class="card-head">
@@ -227,28 +235,7 @@
             <div class="heat-legend"><span>少</span><i class="h0"></i><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i><span>多</span></div>
           </div>
 
-          <div class="chart-card glass tap-card" data-detail="pomo">
-            <div class="card-head">
-              <div>
-                <div class="micro-label">POMODORO</div>
-                <h2 class="card-title">番茄趋势</h2>
-              </div>
-              <div class="chart-legend" id="pomoWeekLegend">0 个</div>
-            </div>
-            <div class="bars pomo-bars" id="statsPomoBars"></div>
-          </div>
-
-          <div class="chart-card glass tap-card" data-detail="insight">
-            <div class="card-head">
-              <div>
-                <div class="micro-label">INSIGHTS</div>
-                <h2 class="card-title">深度分析</h2>
-              </div>
-            </div>
-            <div class="report-list" id="insightList"></div>
-          </div>
-
-          <div class="report-card glass span-2" id="reportCard"></div>
+          <div class="report-card glass" id="reportCard"></div>
         </div>
       </div>
     </section>
@@ -398,7 +385,7 @@
               </div>
               <div class="about-title">时序 · Chronos</div>
               <div class="about-sub">让每一段时间，都有明确的方向。</div>
-              <div class="about-ver" id="aboutVer">Version 2.6.3 · 个人版</div>
+              <div class="about-ver" id="aboutVer">Version 2.6.4 · 个人版</div>
               <div class="about-hint" id="envHint"></div>
             </div>
           </div>

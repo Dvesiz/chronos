@@ -577,15 +577,16 @@ function examDays() {
   return Math.round((target - parseKey(todayKey())) / 86400000);
 }
 
-function renderExamPill() {
-  const el = $('#examPill');
+function renderExamBanner() {
+  const el = $('#examBanner');
   if (!el) return;
   const d = examDays();
   if (d == null || d < 0) { el.hidden = true; return; }
   el.hidden = false;
-  el.innerHTML = d === 0
-    ? `今天 · ${esc(state.exam.label)}`
-    : `距<b>${esc(state.exam.label)}</b>还有<b>${d}</b>天`;
+  const label = (state.exam && state.exam.label) || '考研';
+  $('#ebTitle').textContent = d === 0 ? `今天 · ${label}` : `距${label}`;
+  $('#ebDays').textContent = d;
+  $('#ebDate').textContent = state.exam.date.replace(/-/g, '.');
   el.onclick = () => { haptic('light'); openExamSheet(); };
 }
 
@@ -821,7 +822,7 @@ function renderHome() {
 
   renderNow();
   renderTimeline();
-  renderExamPill();
+  renderExamBanner();
   renderCarryBanner();
   renderReviewBar();
   updateClocks();
@@ -1255,6 +1256,7 @@ function openTaskSheet(t, keep) {
         else if (act === 'delete') { armDelete(btn, () => {
           const r = todayRec();
           if (r) r.tasks = r.tasks.filter(x => x.id !== live.id);
+          if (state.pomo.taskId === live.id) { state.pomo.taskId = null; state.pomo.taskTitle = ''; }
           save(true); closeSheet(); renderHome(); refreshStats(); syncGuard();
           toast('已从今日计划删除');
         }); }
@@ -1411,6 +1413,7 @@ function openPlanSheet() {
         e.stopPropagation();
         armDelete(btn, () => {
           rec.tasks = rec.tasks.filter(x => x.id !== btn.dataset.del);
+          if (state.pomo.taskId === btn.dataset.del) { state.pomo.taskId = null; state.pomo.taskTitle = ''; }
           save(true);
           closeSheet();
           renderHome();
@@ -1535,9 +1538,12 @@ function pomoLinkedTask() {
   const rec = todayRec();
   if (!rec) return null;
   const p = state.pomo;
-  if (p.taskId) {
+  // 只有「这一轮已经开始（运行或暂停在中途）」才认绑定任务；
+  // 空闲状态下跟着当前时间段走，否则会一直显示上一次的旧任务。
+  const inSession = p.running || p.remain < pomoTotal() - .5;
+  if (inSession && p.taskId) {
     const t = rec.tasks.find(x => x.id === p.taskId);
-    if (t) return t;
+    if (t && t.status !== 'done' && t.status !== 'skipped') return t;
   }
   const info = currentInfo(rec);
   return info && (info.mode === 'active' || info.mode === 'doing') ? info.task : null;
@@ -1588,6 +1594,8 @@ function pomoReset() {
   p.startAt = null;
   p.phase = 'focus';
   p.remain = pomoTotal();
+  p.taskId = null;      // 重置后不再绑定旧任务
+  p.taskTitle = '';
   save();
   syncGuard();
   renderFocus();
@@ -1707,6 +1715,8 @@ function setPomoPreset(v) {
   p.running = false;
   p.endAt = null;
   p.startAt = null;
+  p.taskId = null;
+  p.taskTitle = '';
   save(true);
   haptic('light');
   renderFocus();
@@ -1758,9 +1768,10 @@ function renderImmerse() {
   $('#imPause').textContent = p.running
     ? (isBreak ? '暂停休息' : '暂停')
     : (isBreak ? '继续休息' : '继续');
+  const linked = isBreak ? null : pomoLinkedTask();
   $('#imTask').textContent = isBreak
     ? (p.round ? `已完成 ${p.round} 个番茄` : '休息一下，再回来')
-    : (p.taskTitle || '自由专注 · 不绑定具体任务');
+    : (linked ? linked.title : '自由专注 · 不绑定具体任务');
   $('#imBar').style.width = (100 - clamp(remain / total, 0, 1) * 100).toFixed(2) + '%';
 }
 
@@ -1831,7 +1842,7 @@ function guardSession() {
   if (p.running && p.phase === 'focus' && p.endAt && p.endAt > Date.now()) {
     return {
       endAt: p.endAt,
-      title: p.taskTitle || '',
+      title: (pomoLinkedTask() || {}).title || p.taskTitle || '',
       minutes: Math.round(pomoTotal() / 60)
     };
   }
@@ -2310,9 +2321,9 @@ function renderFocus() {
     `<i class="${i < done ? 'done' : ''}${i === nowIdx ? ' now' : ''}"></i>`).join('');
 
   const t = pomoLinkedTask();
-  $('#pomoTask').innerHTML = t
-    ? `当前任务 · <b>${esc(t.title)}</b>`
-    : '自由专注 · 不绑定具体任务';
+  $('#pomoTask').innerHTML = isBreak
+    ? (p.round ? `已完成 ${p.round} 个番茄 · 先休息` : '休息一下，不绑定任务')
+    : (t ? `当前任务 · <b>${esc(t.title)}</b>` : '自由专注 · 不绑定具体任务');
 
   const list = pomoTodayList();
   $('#pomoSummary').innerHTML = `
@@ -2501,27 +2512,14 @@ function renderStats() {
     return `<div class="heat-cell ${lvl} ${k === todayKey() ? 'is-today' : ''}" title="${k} · ${hText(sec)}"></div>`;
   }).join('');
 
-  // 番茄趋势（近 7 天）
-  const pkeys = lastDays(7);
-  renderPomoBars($('#statsPomoBars'), pkeys, pkeys.map(k => (pomoMap[k] || []).length));
-  $('#pomoWeekLegend').textContent = pomoWeekCount() + ' 个';
-
-  // 深度分析
+  // 与上一周期对比
   const prevKeys = lastDays(range * 2).slice(0, range);
   const prevActual = prevKeys.reduce((a, k) => a + daySummary(state.days[k]).actual, 0);
   const diff = prevActual > 0 ? Math.round((totalActual - prevActual) / prevActual * 100) : null;
-  const avgPomo = pomoCount ? Math.round(pomoMins / pomoCount) : 0;
   const bestIdx = sums.reduce((mi, s, i) => s.actual > sums[mi].actual ? i : mi, 0);
   const bestDay = sums.length && sums[bestIdx].actual > 0
     ? DOW_CN[parseKey(keys[bestIdx]).getDay()] + ' · ' + hText(sums[bestIdx].actual)
     : '——';
-
-  $('#insightList').innerHTML = `
-    <div class="report-row"><span>日均学习时长</span><b>${hText(avg)}</b></div>
-    <div class="report-row"><span>状态最好的时段</span><b>${recSpanAvg()}</b></div>
-    <div class="report-row"><span>单日最高投入</span><b>${bestDay}</b></div>
-    <div class="report-row"><span>番茄平均时长</span><b>${avgPomo ? avgPomo + ' 分钟' : '——'}</b></div>
-    <div class="report-row"><span>较上一周期</span><b>${diff == null ? '——' : (diff >= 0 ? '+' : '') + diff + '%'}</b></div>`;
 
   // 阶段总结
   const subjBest = subjArr[0] ? subjArr[0].s : '——';
@@ -2535,7 +2533,9 @@ function renderStats() {
       <div class="report-row"><span>计划完成率</span><b>${rate}%</b></div>
       <div class="report-row"><span>番茄专注</span><b>${pomoCount} 个 · ${hText(pomoMins * 60)}</b></div>
       <div class="report-row"><span>投入最多的分类</span><b>${subjBest}</b></div>
+      <div class="report-row"><span>单日最高投入</span><b>${bestDay}</b></div>
       <div class="report-row"><span>最稳定的时段</span><b>${win}</b></div>
+      <div class="report-row"><span>较上一周期</span><b>${diff == null ? '——' : (diff >= 0 ? '+' : '') + diff + '%'}</b></div>
       <div class="report-row"><span>完成 / 跳过</span><b>${doneCount} / ${sums.reduce((a, s) => a + s.skipped, 0)}</b></div>
     </div>
     ${state.demo ? '<div class="report-row" style="margin-top:12px;font-size:10px;color:var(--ink-3)">含演示数据 · 可在设置中清除</div>' : ''}`;
