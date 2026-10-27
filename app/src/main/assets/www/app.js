@@ -475,8 +475,7 @@ function openWeeklyReport() {
     $('#wkShare', panel).addEventListener('click', () => {
       haptic('light');
       const n = N();
-      if (n && n.share) n.share(text);
-      else toast('浏览器预览无法调起分享');
+      shareText(text, '时序 · 本周周报');
     });
   });
 }
@@ -738,15 +737,35 @@ function closeCelebrate() {
   }, 420);
 }
 
+function shareText(text, title = '时序 · Chronos') {
+  const n = N();
+  if (n && n.share) {
+    try { n.share(text); return true; } catch (e) {}
+  }
+  if (navigator.share) {
+    try {
+      const pending = navigator.share({ title, text });
+      if (pending && pending.catch) pending.catch(() => {});
+      return true;
+    } catch (e) {}
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => toast('内容已复制，可粘贴分享'))
+      .catch(() => toast('浏览器预览无法调起分享'));
+    return true;
+  }
+  toast('浏览器预览无法调起分享');
+  return false;
+}
+
 function shareCelebrate() {
   const rec = todayRec();
   const tasks = (rec && rec.tasks) || [];
   const done = tasks.filter(t => t.status === 'done').length;
   const actual = tasks.reduce((a, t) => a + taskSeconds(t), 0);
   const text = `时序 · 今日打卡\n${todayKey()}\n完成 ${done}/${tasks.length} 个时段 · 专注 ${hText(actual)} · 连续 ${calcStreak()} 天`;
-  const n = N();
-  if (n && n.share) n.share(text);
-  else toast('浏览器预览无法调起分享');
+  shareText(text, '时序 · 今日打卡');
 }
 
 function renderGoalSettings() {
@@ -3141,6 +3160,7 @@ function bindSettings() {
       const blob = new Blob([data], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       toast('学习数据已导出为文件');
     }
   });
