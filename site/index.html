@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>时序 · Chronos — 让每一段时间，都有明确的方向</title>
+<meta name="description" content="时序 Chronos 是一款为学习与长期规划打造的 Android 时间管理应用：模板化计划、番茄与沉浸专注、每日复盘与数据统计。纯单机运行，无账号、无云同步，安装包约 110 KB。">
+<meta name="theme-color" content="#f2f2f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0f12" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="时序 · Chronos">
+<meta property="og:description" content="计划、专注、复盘，一个闭环。零依赖的 Android 时间管理应用。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://dvesiz.github.io/chronos/img/home.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="logo.svg">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<a class="skip-link" href="#main">跳到主要内容</a>
+
+<div class="atmosphere" aria-hidden="true">
+  <div class="atmosphere__glow"></div>
+  <div class="atmosphere__grain"></div>
+</div>
+
+<header class="nav" id="nav">
+  <div class="nav__inner">
+    <a class="brand" href="#top" aria-label="时序 Chronos 首页">
+      <img class="brand__mark" src="logo.svg" width="34" height="34" alt="">
+      <span class="brand__text">
+        <b>时序</b>
+        <i>CHRONOS</i>
+      </span>
+    </a>
+
+    <nav class="nav__links" aria-label="主导航">
+      <a href="#loop">闭环</a>
+      <a href="#features">功能</a>
+      <a href="#immerse">沉浸</a>
+      <a href="#privacy">数据</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+
+    <div class="nav__actions">
+      <a class="btn btn--ghost btn--sm" href="app/" rel="noopener">在线体验</a>
+      <a class="btn btn--primary btn--sm" href="https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.6.7.apk">
+        下载 APK
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ─────────────────────────── HERO ─────────────────────────── -->
+  <section class="hero" id="top">
+    <div class="shell hero__grid">
+
+      <div class="hero__copy">
+        <p class="eyebrow" data-reveal>
+          <span class="eyebrow__dot"></span>
+          ANDROID · 纯单机 · 零第三方依赖
+        </p>
+
+        <h1 class="hero__title" data-reveal style="--delay:60ms">
+          让每一段时间，<br>
+          <span class="hero__title-accent">都有明确的方向。</span>
+        </h1>
+
+        <p class="hero__lede" data-reveal style="--delay:120ms">
+          时序不做又一个待办清单。它把一天切成清晰的时段，
+          让你只需要回答两个问题：<strong>现在该做什么</strong>，
+          以及<strong>这一段做得怎么样</strong>。
+        </p>
+
+        <div class="hero__cta" data-reveal style="--delay:180ms">
+          <a class="btn btn--primary btn--lg" href="https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.6.7.apk">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="ico"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4.5 19.5h15"/></svg>
+            下载 APK
+            <span class="btn__meta">112 KB</span>
+          </a>
+          <a class="btn btn--ghost btn--lg" href="app/">
+            在线体验
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="ico"><path d="M5 12h13m0 0-5.5-5.5M18 12l-5.5 5.5"/></svg>
+          </a>
+        </div>
+
+        <ul class="hero__meta" data-reveal style="--delay:240ms">
+          <li>Android 8.0+</li>
+          <li>无账号 · 无云同步</li>
+          <li>数据只存在本机</li>
+        </ul>
+      </div>
+
+      <div class="hero__visual" data-reveal style="--delay:300ms">
+        <div class="device" data-tilt>
+          <div class="device__bezel">
+            <img class="device__shot" src="img/home.png" width="1640" height="2186"
+                 alt="时序的今日页：时间轴、当前任务与今日进度" fetchpriority="high">
+          </div>
+        </div>
+
+        <div class="chip chip--flame" data-float="1">
+          <span class="chip__k">连续打卡</span>
+          <span class="chip__v">7 <i>天</i></span>
+        </div>
+        <div class="chip chip--progress" data-float="2">
+          <span class="chip__k">今日安排</span>
+          <span class="chip__v">4<i>/6</i></span>
+          <span class="chip__bar"><b style="--w:66%"></b></span>
+        </div>
+        <div class="chip chip--focus" data-float="3">
+          <span class="chip__pulse"></span>
+          <span class="chip__k">专注中</span>
+          <span class="chip__v">2h 40m</span>
+        </div>
+
+        <div class="hero__halo" aria-hidden="true"></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── SPECS ─────────────────────────── -->
+  <section class="specs" aria-label="产品规格">
+    <div class="shell specs__grid">
+      <div class="spec" data-reveal>
+        <b class="spec__num" data-count="112" data-suffix="">0</b>
+        <span class="spec__unit">KB</span>
+        <p class="spec__label">安装包体积<br>不及一张照片</p>
+      </div>
+      <div class="spec" data-reveal style="--delay:60ms">
+        <b class="spec__num" data-count="0">0</b>
+        <span class="spec__unit">个</span>
+        <p class="spec__label">第三方依赖<br>没有框架运行时</p>
+      </div>
+      <div class="spec" data-reveal style="--delay:120ms">
+        <b class="spec__num" data-count="0">0</b>
+        <span class="spec__unit">次</span>
+        <p class="spec__label">联网请求<br>飞行模式照常用</p>
+      </div>
+      <div class="spec" data-reveal style="--delay:180ms">
+        <b class="spec__num" data-count="2">0</b>
+        <span class="spec__unit">份</span>
+        <p class="spec__label">本地持久化<br>存储被清也能恢复</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── LOOP ─────────────────────────── -->
+  <section class="section loop" id="loop">
+    <div class="shell">
+      <header class="section__head">
+        <p class="eyebrow" data-reveal><span class="eyebrow__dot"></span>THE LOOP</p>
+        <h2 class="section__title" data-reveal style="--delay:60ms">
+          计划 → 专注 → 复盘，<br>每一天自动闭环。
+        </h2>
+        <p class="section__lede" data-reveal style="--delay:120ms">
+          不需要维护复杂的项目体系。一天结束，闭环自己合上；
+          第二天打开，日历已经替你准备好。
+        </p>
+      </header>
+
+      <ol class="steps">
+        <li class="step" data-reveal>
+          <span class="step__idx">01</span>
+          <h3 class="step__title">计划</h3>
+          <p class="step__text">
+            配置一次作息模板 —— 几点背单词、几点阅读、几点留给项目。
+            之后每天自动生成，临时有事就延后、缩短、拆分或跳过。
+          </p>
+          <p class="step__tag">模板驱动 · 弹性调整 · 遗留顺延</p>
+        </li>
+        <li class="step" data-reveal style="--delay:80ms">
+          <span class="step__idx">02</span>
+          <h3 class="step__title">专注</h3>
+          <p class="step__text">
+            番茄钟给你节奏，沉浸界面替你挡住手机。
+            计时按真实时间戳走，锁屏、切后台、杀掉进程都不会丢秒。
+          </p>
+          <p class="step__tag">25 / 5 节奏 · 计时不丢 · 极度沉浸</p>
+        </li>
+        <li class="step" data-reveal style="--delay:160ms">
+          <span class="step__idx">03</span>
+          <h3 class="step__title">复盘</h3>
+          <p class="step__text">
+            一句当日复盘，一张打卡卡，一份诚实的数据：
+            计划了多少、实际做了多少、时间都去了哪儿。
+          </p>
+          <p class="step__tag">7 / 30 天趋势 · 打卡日历 · 周报</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── FEATURES ─────────────────────────── -->
+  <section class="section features" id="features">
+    <div class="shell">
+      <header class="section__head section__head--split">
+        <div>
+          <p class="eyebrow" data-reveal><span class="eyebrow__dot"></span>FEATURES</p>
+          <h2 class="section__title" data-reveal style="--delay:60ms">
+            小而完整，<br>每一处都为每天在用的场景。
+          </h2>
+        </div>
+        <p class="section__aside" data-reveal style="--delay:120ms">
+          没有为了显得功能多而存在的开关。
+          这里的每一项，都对应备考、写论文、做项目时真实会遇到的一刻。
+        </p>
+      </header>
+
+      <div class="bento">
+
+        <article class="card card--wide" data-reveal>
+          <div class="card__body">
+            <p class="card__kicker">DAILY PLAN</p>
+            <h3 class="card__title">一天的时间轴，<br>一眼看得完</h3>
+            <p class="card__text">
+              今日进度、当前任务、下一段安排，都在首页。
+              橙色卡片里直接开始或暂停，不必层层点进。
+            </p>
+          </div>
+          <div class="card__media card__media--crop">
+            <img src="img/home.png" width="1640" height="2186" loading="lazy" alt="今日页的时间轴与进度卡">
+          </div>
+        </article>
+
+        <article class="card card--tall card--ink" data-reveal style="--delay:60ms">
+          <div class="card__body">
+            <p class="card__kicker">POMODORO</p>
+            <h3 class="card__title">经典 25 / 5，<br>也可以自己定</h3>
+            <p class="card__text">
+              专注、短休、自动衔接，节奏感代替意志力。
+              结束铃在后台也会响，息屏不算中断。
+            </p>
+          </div>
+          <div class="card__media">
+            <img src="img/focus.png" width="1640" height="2186" loading="lazy" alt="番茄钟页面">
+          </div>
+        </article>
+
+        <article class="card" data-reveal style="--delay:120ms">
+          <div class="card__body">
+            <p class="card__kicker">CALENDAR</p>
+            <h3 class="card__title">打卡日历</h3>
+            <p class="card__text">
+              月视图里同时看打卡与投入强度，点开某一天，回到当天的完成情况和那句复盘。
+            </p>
+          </div>
+          <div class="card__media card__media--flat">
+            <img src="img/stats.png" width="1640" height="2186" loading="lazy" alt="统计页的打卡日历与趋势图">
+          </div>
+        </article>
+
+        <article class="card" data-reveal style="--delay:180ms">
+          <div class="card__body">
+            <p class="card__kicker">DARK</p>
+            <h3 class="card__title">夜里也好看</h3>
+            <p class="card__text">
+              一键切换或跟随系统。深夜复盘时，屏幕不会比台灯更刺眼。
+            </p>
+          </div>
+          <div class="card__media card__media--flat">
+            <img src="img/dark.png" width="1640" height="2186" loading="lazy" alt="深色模式界面">
+          </div>
+        </article>
+
+        <article class="card card--plain" data-reveal style="--delay:240ms">
+          <p class="card__kicker">WIDGET</p>
+          <h3 class="card__title">桌面小组件</h3>
+          <p class="card__text">
+            2×2 卡片放着今日进度、下一项任务与倒计时。点一下，直接开始专注。
+          </p>
+        </article>
+
+        <article class="card card--plain" data-reveal style="--delay:300ms">
+          <p class="card__kicker">CARRY OVER</p>
+          <h3 class="card__title">没做完的，<br>不会凭空消失</h3>
+          <p class="card__text">
+            第二天在计划卡里提示遗留任务，可一键排进今天的空档，也可以干脆放下。
+          </p>
+        </article>
+
+        <article class="card card--plain" data-reveal style="--delay:360ms">
+          <p class="card__kicker">BACKUP</p>
+          <h3 class="card__title">数据是你的</h3>
+          <p class="card__text">
+            导出为 JSON 文件，换机时导入恢复。导入前自动在本机留一份备份。
+          </p>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── IMMERSE ─────────────────────────── -->
+  <section class="immerse" id="immerse">
+    <div class="shell immerse__grid">
+      <div class="immerse__copy">
+        <p class="eyebrow eyebrow--onDark" data-reveal><span class="eyebrow__dot"></span>DEEP FOCUS</p>
+        <h2 class="immerse__title" data-reveal style="--delay:60ms">
+          只剩时间，<br>和一句话。
+        </h2>
+        <p class="immerse__lede" data-reveal style="--delay:120ms">
+          开始番茄后，整个屏幕只留下倒计时与一句提醒。
+          每 45 秒换一句，刚好够你抬头，再低下去。
+        </p>
+
+        <ul class="immerse__list">
+          <li data-reveal style="--delay:180ms">
+            <b>极度沉浸</b>
+            <span>借使用情况访问识别前台应用，切走就被全屏遮罩挡住，长按 3 秒才能放弃本轮。</span>
+          </li>
+          <li data-reveal style="--delay:240ms">
+            <b>该放行的会放行</b>
+            <span>闹钟、来电、紧急呼叫、系统授权弹窗都不拦。</span>
+          </li>
+          <li data-reveal style="--delay:300ms">
+            <b>后台也准确</b>
+            <span>前台服务负责到点通知，息屏、锁屏都不影响这一轮的结束时刻。</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="immerse__visual" data-reveal style="--delay:160ms">
+        <div class="device device--dark">
+          <div class="device__bezel">
+            <img class="device__shot" src="img/immerse.png" width="1640" height="2186" loading="lazy"
+                 alt="沉浸专注界面：只剩倒计时与一句激励语">
+          </div>
+        </div>
+        <div class="immerse__ring" aria-hidden="true"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── PRIVACY ─────────────────────────── -->
+  <section class="section privacy" id="privacy">
+    <div class="shell">
+      <header class="section__head">
+        <p class="eyebrow" data-reveal><span class="eyebrow__dot"></span>YOUR DATA</p>
+        <h2 class="section__title" data-reveal style="--delay:60ms">
+          没有服务器，<br>所以也没有「上传」。
+        </h2>
+      </header>
+
+      <div class="privacy__grid">
+        <div class="privacy__col" data-reveal>
+          <h3>纯单机</h3>
+          <p>没有账号体系、没有云同步、没有埋点。飞行模式下，计划、计时、统计照常工作。</p>
+        </div>
+        <div class="privacy__col" data-reveal style="--delay:80ms">
+          <h3>双保险持久化</h3>
+          <p>数据写在 <code>localStorage</code>，同时同步一份到系统 <code>SharedPreferences</code>。WebView 存储被清掉也能恢复。</p>
+        </div>
+        <div class="privacy__col" data-reveal style="--delay:160ms">
+          <h3>带走很简单</h3>
+          <p>「导出学习数据」得到一个 JSON 文件；换机后在设置里导入即可。卸载会清空本机数据，记得先导出。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── TRY ─────────────────────────── -->
+  <section class="try" id="try">
+    <div class="shell">
+      <div class="try__card" data-reveal>
+        <div class="try__copy">
+          <p class="eyebrow"><span class="eyebrow__dot"></span>TRY IT NOW</p>
+          <h2 class="try__title">先试后装，也行。</h2>
+          <p class="try__text">
+            浏览器版复用同一套界面与逻辑，计划、专注、番茄钟、统计、打卡、导入导出都能跑。
+            数据存在你自己的浏览器里；系统通知、精确闹钟、悬浮窗与极度沉浸，需要安装 APK 才能用。
+          </p>
+          <div class="try__actions">
+            <a class="btn btn--primary btn--lg" href="https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.6.7.apk">
+              下载 APK
+              <span class="btn__meta">v2.6.7</span>
+            </a>
+            <a class="btn btn--contrast btn--lg" href="app/">打开在线体验</a>
+          </div>
+          <p class="try__note">
+            全部版本与更新说明见
+            <a href="https://github.com/Dvesiz/chronos/releases">Releases</a>。
+          </p>
+        </div>
+        <div class="try__art" aria-hidden="true">
+          <div class="try__ring"></div>
+          <div class="try__stat"><b>2.6.7</b><span>当前版本</span></div>
+          <div class="try__stat try__stat--alt"><b>MIT</b><span>开源许可</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── FAQ ─────────────────────────── -->
+  <section class="section faq" id="faq">
+    <div class="shell faq__grid">
+      <header class="section__head faq__head">
+        <p class="eyebrow" data-reveal><span class="eyebrow__dot"></span>FAQ</p>
+        <h2 class="section__title" data-reveal style="--delay:60ms">你可能想问</h2>
+      </header>
+
+      <div class="faq__list">
+        <details data-reveal>
+          <summary>真的完全不联网吗？</summary>
+          <p>核心功能不依赖网络，计划、计时和统计数据全部留在本机。应用声明了网络权限，用于本地账户的验证码邮件能力；当前发布版本未配置服务端密钥，不会主动发送请求。</p>
+        </details>
+        <details data-reveal style="--delay:60ms">
+          <summary>换手机了，数据怎么办？</summary>
+          <p>先在旧设备「导出学习数据」，得到一个 JSON 文件；在新设备安装后进入设置，用「导入学习数据」恢复。没有云同步，所以这一步需要你手动完成。</p>
+        </details>
+        <details data-reveal style="--delay:120ms">
+          <summary>为什么不做云同步？</summary>
+          <p>云同步意味着服务器、账号和隐私边界。这个应用的定位是本地工具，宁可让你手动导出一次，也不想把学习记录放到别人的机器上。</p>
+        </details>
+        <details data-reveal style="--delay:180ms">
+          <summary>安装包这么小，功能会缩水吗？</summary>
+          <p>不会。小是因为没有引入任何框架运行时：界面是原生 HTML/CSS/JS，渲染在系统 WebView 里，系统能力由少量 Java 代码直接对接。</p>
+        </details>
+        <details data-reveal style="--delay:240ms">
+          <summary>极度沉浸需要什么权限？</summary>
+          <p>需要「使用情况访问」与「悬浮窗」。两者都只用于判断当前前台应用、在切走时盖上遮罩，不读取内容、不上传任何数据；不授权时其他功能不受影响。</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="shell footer__inner">
+    <div class="footer__brand">
+      <img src="logo.svg" width="30" height="30" alt="">
+      <div>
+        <b>时序 · Chronos</b>
+        <span>让每一段时间，都有明确的方向。</span>
+      </div>
+    </div>
+    <nav class="footer__links" aria-label="页脚导航">
+      <a href="https://github.com/Dvesiz/chronos/releases">下载</a>
+      <a href="app/">在线体验</a>
+      <a href="https://github.com/Dvesiz/chronos">GitHub</a>
+      <a href="https://github.com/Dvesiz/chronos/blob/main/LICENSE">MIT 许可</a>
+    </nav>
+    <p class="footer__meta">© <span id="year">2026</span> Dvesiz · v2.6.7</p>
+  </div>
+</footer>
+
+<script src="main.js" defer></script>
+</body>
+</html>
