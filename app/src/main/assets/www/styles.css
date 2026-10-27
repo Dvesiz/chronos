@@ -204,6 +204,31 @@ body:not(.motion) .pages { transition: none; }
 }
 [data-theme="dark"] .btn-ghost { background: var(--card-2); }
 
+/* 浏览器演示首次进入的轻量说明层，不影响 APK 内原生页面 */
+.web-welcome {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(20, 20, 22, .28);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.web-welcome-card {
+  width: min(430px, 100%); padding: 28px;
+  border: 1px solid var(--hairline); border-radius: 22px;
+  background: var(--card); box-shadow: var(--shadow-lg);
+}
+.web-welcome-kicker { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--accent); }
+.web-welcome-card h2 { margin: 10px 0 8px; font-size: 25px; line-height: 1.18; }
+.web-welcome-card p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.75; }
+.web-welcome-actions { display: flex; gap: 10px; margin-top: 22px; }
+.web-welcome-actions .btn { flex: 1; }
+.web-welcome-note { margin-top: 14px; color: var(--ink-3); font-size: 11px; line-height: 1.5; }
+@media (max-width: 420px) {
+  .web-welcome-card { padding: 22px; }
+  .web-welcome-actions { flex-direction: column; }
+}
+
 .pill-btn {
   height: 30px;
   padding: 0 14px;
