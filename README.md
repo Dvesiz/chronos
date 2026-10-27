@@ -18,6 +18,16 @@
 
 <br />
 
+### 下载安装
+
+[![下载 APK](https://img.shields.io/badge/下载-APK%202.6.7-FF5A1F?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.6.7.apk)
+
+**Android 8.0+** ｜ 约 110 KB ｜ 无后台联网、无账号、数据全部存在本机
+
+下载后允许「安装未知来源应用」即可；全部版本见 [Releases](https://github.com/Dvesiz/chronos/releases)。
+
+<br />
+
 ### 在线体验
 
 [打开 Chronos 在线体验](https://dvesiz.github.io/chronos/)
