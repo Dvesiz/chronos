@@ -27,6 +27,7 @@
             <span class="live-clock" id="liveClock">--:--</span>
           </div>
           <div class="date-line"><span id="dow">MONDAY</span><span class="sep"></span><span id="dateText">10 月 26 日</span></div>
+          <div class="exam-pill" id="examPill" hidden></div>
           <h1 id="greeting">今天，保持自己的节奏。</h1>
         </header>
 
@@ -72,7 +73,9 @@
                 </div>
                 <button class="ghost-btn" id="editPlanBtn">编辑计划</button>
               </div>
+              <button class="leftover-row" id="leftoverRow" hidden></button>
               <div class="timeline" id="timeline"></div>
+              <button class="review-bar" id="reviewBar" hidden></button>
               <div class="footnote" id="footnote">模板只是示例 · 在「编辑计划」里换成你自己的节奏</div>
             </section>
           </div>
@@ -180,10 +183,15 @@
             <button data-range="30">近 30 天</button>
             <span class="seg-glider" id="rangeGlider"></span>
           </div>
+          <div class="stats-actions">
+            <button class="ghost-btn" id="btnWeekly">本周周报</button>
+          </div>
         </header>
 
         <div class="stats-grid">
           <div class="stat-hero glass tap-card" id="statHero" data-detail="overview"></div>
+
+          <section class="goal-card glass span-all" id="goalCard"></section>
 
           <div class="chart-card glass tap-card" data-detail="daily">
             <div class="card-head">
@@ -324,6 +332,20 @@
                 <button class="pill-btn" id="btnOverlayPerm">去开启</button>
               </div>
             </div>
+
+            <div class="group-label">目标</div>
+            <div class="list-card glass">
+              <div class="row">
+                <div class="row-icon icon-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="4"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M9 14h2M13 14h2M9 17h2"/></svg></div>
+                <div class="row-body"><div class="row-title">考试倒计时</div><div class="row-sub" id="examSub">未设置</div></div>
+                <button class="pill-btn" id="btnExam">设置</button>
+              </div>
+              <div class="row">
+                <div class="row-icon icon-teal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg></div>
+                <div class="row-body"><div class="row-title">每周目标</div><div class="row-sub" id="goalSub">未设置</div></div>
+                <button class="pill-btn" id="btnGoal">设置</button>
+              </div>
+            </div>
           </div>
 
           <div class="settings-col">
@@ -376,7 +398,7 @@
               </div>
               <div class="about-title">时序 · Chronos</div>
               <div class="about-sub">让每一段时间，都有明确的方向。</div>
-              <div class="about-ver" id="aboutVer">Version 2.6.2 · 个人版</div>
+              <div class="about-ver" id="aboutVer">Version 2.6.3 · 个人版</div>
               <div class="about-hint" id="envHint"></div>
             </div>
           </div>

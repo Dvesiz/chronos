@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:background="@drawable/widget_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="时序 · 今日"
+            android:textColor="#8E8E93"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/widget_exam"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FF5A1F"
+            android:textSize="10sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_progress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="已完成 0 / 0"
+        android:textColor="#1C1C1E"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:maxLines="1" />
+
+    <TextView
+        android:id="@+id/widget_next_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="下一项"
+        android:textColor="#8E8E93"
+        android:textSize="10sp"
+        android:maxLines="1" />
+
+    <TextView
+        android:id="@+id/widget_next_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="还没有今日计划"
+        android:textColor="#1C1C1E"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <Button
+        android:id="@+id/widget_btn"
+        android:layout_width="match_parent"
+        android:layout_height="34dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/widget_btn"
+        android:padding="0dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:stateListAnimator="@null"
+        android:text="开始专注"
+        android:textAllCaps="false"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp" />
+</LinearLayout>

@@ -90,6 +90,12 @@ function loadState() {
   if (!s.advance && s.advance !== 0) s.advance = 5;
   if (!s.user || typeof s.user !== 'object' || !s.user.email) s.user = null;
 
+  // 目标 / 复盘 / 里程碑
+  s.exam = (s.exam && s.exam.date) ? { date: s.exam.date, label: s.exam.label || '考研' } : null;
+  if (typeof s.goalWeekly !== 'number' || s.goalWeekly < 0 || !isFinite(s.goalWeekly)) s.goalWeekly = 0;
+  if (!s.reviews || typeof s.reviews !== 'object' || Array.isArray(s.reviews)) s.reviews = {};
+  if (!s.milestones || typeof s.milestones !== 'object' || Array.isArray(s.milestones)) s.milestones = {};
+
   // 番茄钟
   s.pomo = s.pomo || {};
   const p = s.pomo;
@@ -115,6 +121,7 @@ function save(immediate) {
     const cutoff = keys.length ? keys[0] : dateKey(addDays(new Date(), -120));
     const sessions = (state.pomo && state.pomo.sessions) || {};
     Object.keys(sessions).forEach(k => { if (k < cutoff) delete sessions[k]; });
+    Object.keys(state.reviews || {}).forEach(k => { if (k < cutoff) delete state.reviews[k]; });
     try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
     const n = N();
     if (n && n.saveState) {
@@ -189,6 +196,452 @@ function settleStaleTimers() {
   if (changed) save();
 }
 
+/* ---------------- 遗留任务顺延 ---------------- */
+const CARRY_LOOKBACK = 3;
+
+/** 最近几天没做完、也没处理过的任务 */
+function leftovers() {
+  const today = todayKey();
+  const out = [];
+  Object.keys(state.days).sort().reverse().forEach(k => {
+    if (k >= today) return;
+    if ((parseKey(today) - parseKey(k)) / 86400000 > CARRY_LOOKBACK) return;
+    (state.days[k].tasks || []).forEach(t => {
+      if (t.status !== 'todo' && t.status !== 'doing') return;
+      if (t.movedTo) return;
+      out.push({ date: k, task: t });
+    });
+  });
+  return out.slice(0, 12);
+}
+
+const dayLabel = k => {
+  const diff = Math.round((parseKey(todayKey()) - parseKey(k)) / 86400000);
+  return diff === 1 ? '昨天' : diff === 2 ? '前天' : `${monthDay(k)}`;
+};
+
+/** 在今天的空闲时段里给遗留任务找位置，尽量不重叠、不超过 23:55 */
+function allocateSlots(items) {
+  const rec = todayRec();
+  const busy = (rec ? rec.tasks : [])
+    .filter(t => t.status !== 'skipped')
+    .map(t => ({ s: t.start, e: taskEnd(t) }))
+    .sort((a, b) => a.s - b.s);
+  const dayStart = 8 * 60;
+  const dayEnd = 23 * 60 + 55;
+  let cursor = Math.max(dayStart, Math.ceil(nowMin() / 5) * 5);
+  const out = [];
+  items.forEach(({ task }) => {
+    const want = Math.max(15, Math.round(taskDur(task)));
+    let start = cursor;
+    let dur = want;
+    let placed = false;
+    while (start + dur <= dayEnd) {
+      const hit = busy.find(b => start < b.e && start + dur > b.s);
+      if (!hit) { placed = true; break; }
+      start = Math.ceil(hit.e / 5) * 5;
+    }
+    if (!placed) {
+      const lastEnd = busy.reduce((a, b) => Math.max(a, b.e), dayStart);
+      start = Math.min(Math.max(cursor, lastEnd), dayEnd - 15);
+      dur = Math.min(want, dayEnd - start);
+    }
+    out.push({ start, end: start + dur, shortened: dur < want });
+    busy.push({ s: start, e: start + dur });
+    busy.sort((a, b) => a.s - b.s);
+    cursor = start + dur;
+  });
+  return out;
+}
+
+function carryToToday(entries) {
+  const rec = todayRec();
+  if (!rec || !entries.length) return;
+  const slots = allocateSlots(entries);
+  const k = todayKey();
+  rec.tasks = rec.tasks || [];
+  let shortened = 0;
+  entries.forEach(({ date, task }, i) => {
+    const slot = slots[i];
+    if (slot.shortened) shortened++;
+    const copy = cloneTask(task, k);
+    copy.id = 'c' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 5);
+    copy.start = slot.start;
+    copy.end = slot.end;
+    copy.note = (task.note || '').trim() || ('遗留自 ' + dayLabel(date));
+    if (slot.shortened) copy.note += '（今天空档不足，已压缩）';
+    copy.carriedFrom = date;
+    copy.modified = true;
+    rec.tasks.push(copy);
+    task.movedTo = k;
+  });
+  rec.tasks.sort((a, b) => a.start - b.start);
+  save(true);
+  renderHome();
+  toast(shortened
+    ? `已排入 ${entries.length} 项 · ${shortened} 项因空档不足被压缩`
+    : `已把 ${entries.length} 项排进今天`);
+}
+
+function dropLeftovers(entries) {
+  entries.forEach(({ task }) => { task.movedTo = 'dropped'; });
+  save(true);
+  renderHome();
+  toast('已标记为不补');
+}
+
+function renderCarryBanner() {
+  const el = $('#leftoverRow');
+  if (!el) return;
+  const list = leftovers();
+  if (!list.length) { el.hidden = true; return; }
+  const mins = list.reduce((a, { task }) => a + Math.max(15, Math.round(taskDur(task))), 0);
+  el.hidden = false;
+  el.innerHTML = `<span class="lb-dot"></span><b>${list.length} 项遗留</b><span>${humanSec(mins * 60)} · 排到今天</span>`;
+}
+
+function openLeftoverSheet() {
+  const list = leftovers();
+  if (!list.length) { toast('没有遗留任务'); return; }
+  const rows = list.map(({ date, task }, i) => `
+    <div class="row">
+      <div class="row-icon" style="background:var(--warn-soft);color:var(--warn);box-shadow:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg>
+      </div>
+      <div class="row-body">
+        <div class="row-title">${esc(task.title)}</div>
+        <div class="row-sub">${dayLabel(date)} · ${Math.round(taskDur(task))} 分钟${task.subject ? ' · ' + esc(task.subject) : ''}</div>
+      </div>
+      <button class="pill-btn" data-pick="${i}">排入</button>
+    </div>`).join('');
+
+  openSheet(`
+    <div class="sheet-head">
+      <div style="flex:1">
+        <div class="sheet-eyebrow">CARRY OVER · 遗留</div>
+        <h2 class="sheet-title">还没做完的</h2>
+        <div class="sheet-meta">排进今天会把时间接在今天已有的安排之后，不覆盖原计划</div>
+      </div>
+      <button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </div>
+    <div class="list-card" style="margin-top:14px">${rows}</div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" style="flex:1" id="lvDrop">都不补了</button>
+      <button class="btn btn-primary" style="flex:1" id="lvAll">全部排到今天</button>
+    </div>`, panel => {
+    panel.querySelectorAll('[data-pick]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        haptic('light');
+        const i = Number(btn.dataset.pick);
+        carryToToday([list[i]]);
+        closeSheet();
+      });
+    });
+    $('#lvAll', panel).addEventListener('click', () => { haptic('light'); carryToToday(list); closeSheet(); });
+    $('#lvDrop', panel).addEventListener('click', () => { dropLeftovers(list); closeSheet(); });
+  });
+}
+
+/* ---------------- 每日复盘 / 周报 ---------------- */
+const todayReview = () => state.reviews[todayKey()] || null;
+
+function renderReviewBar() {
+  const el = $('#reviewBar');
+  if (!el) return;
+  const rv = todayReview();
+  if (!rv && new Date().getHours() < 19) { el.hidden = true; return; }
+  el.hidden = false;
+  el.classList.toggle('is-done', !!rv);
+  el.innerHTML = rv
+    ? `<span class="rv-label">今日复盘</span><span class="rv-text">${esc(rv.text)}</span>`
+    : `<span class="rv-label">今日复盘</span><span class="rv-text">今天最值钱的一段是什么？</span><span class="rv-go">写一句 →</span>`;
+}
+
+function openReviewSheet() {
+  const k = todayKey();
+  const cur = (state.reviews[k] || {}).text || '';
+  openSheet(`
+    <div class="sheet-head">
+      <div style="flex:1">
+        <div class="sheet-eyebrow">REVIEW · ${k}</div>
+        <h2 class="sheet-title">今天的一句话</h2>
+        <div class="sheet-meta">写给明天的自己 · 最多 140 字</div>
+      </div>
+      <button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </div>
+    <div class="form">
+      <div class="field field-col">
+        <label>复盘</label>
+        <textarea id="rvText" maxlength="140" placeholder="例如：上午刷真题效率最高，晚上背单词一直走神。">${esc(cur)}</textarea>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-primary" id="rvSave">保存复盘</button>
+    </div>`, panel => {
+    const ta = $('#rvText', panel);
+    setTimeout(() => ta.focus(), 300);
+    $('#rvSave', panel).addEventListener('click', () => {
+      const text = ta.value.trim();
+      if (!text) { toast('写一句再保存'); return; }
+      state.reviews[k] = { text, at: Date.now() };
+      save(true);
+      closeSheet();
+      renderHome();
+      toast('复盘已记下');
+    });
+  });
+}
+
+function weeklyText() {
+  const keys = lastDays(7);
+  const sums = keys.map(k => daySummary(state.days[k]));
+  const total = sums.reduce((a, s) => a + s.actual, 0);
+  const done = sums.reduce((a, s) => a + s.done, 0);
+  const totalCount = sums.reduce((a, s) => a + s.total, 0);
+  const rate = totalCount ? Math.round(done / totalCount * 100) : 0;
+  const active = keys.filter(k => state.days[k]).length || 1;
+  const pomo = keys.reduce((a, k) => a + ((state.pomo.sessions[k] || []).length), 0);
+  const cats = categoryTotals(keys);
+  let bestIdx = 0;
+  sums.forEach((s, i) => { if (s.actual > sums[bestIdx].actual) bestIdx = i; });
+  const best = sums[bestIdx] && sums[bestIdx].actual > 0
+    ? `${monthDay(keys[bestIdx])} ${weekDay(keys[bestIdx])} · ${hText(sums[bestIdx].actual)}`
+    : '——';
+  const reviews = keys
+    .filter(k => state.reviews[k] && state.reviews[k].text)
+    .map(k => `${monthDay(k)}  ${state.reviews[k].text}`);
+
+  return [
+    '时序 · 本周复盘',
+    `${monthDay(keys[0])} — ${monthDay(keys[6])}`,
+    '',
+    `投入 ${hText(total)} · 日均 ${hText(total / active)}`,
+    `完成率 ${rate}%（${done}/${totalCount} 个时段）`,
+    `番茄 ${pomo} 个 · 连续坚持 ${calcStreak()} 天`,
+    `最多投入 ${cats[0] ? cats[0].s + ' · ' + hText(cats[0].sec) : '——'}`,
+    `最高一天 ${best}`,
+    '',
+    reviews.length ? '每日复盘：' : '这一周还没写复盘。',
+    ...reviews
+  ].join('\n');
+}
+
+function openWeeklyReport() {
+  const text = weeklyText();
+  openSheet(`
+    <div class="sheet-head">
+      <div style="flex:1">
+        <div class="sheet-eyebrow">WEEKLY · 周报</div>
+        <h2 class="sheet-title">这一周</h2>
+        <div class="sheet-meta">最近 7 天 · 可直接分享</div>
+      </div>
+      <button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </div>
+    <pre class="weekly-text">${esc(text)}</pre>
+    <div class="sheet-actions">
+      <button class="btn btn-primary" id="wkShare">分享这周</button>
+    </div>
+    <div class="detail-note" style="margin-bottom:18px">分享会打开系统分享面板；内容只在本机生成，不上传。</div>`, panel => {
+    $('#wkShare', panel).addEventListener('click', () => {
+      haptic('light');
+      const n = N();
+      if (n && n.share) n.share(text);
+      else toast('浏览器预览无法调起分享');
+    });
+  });
+}
+
+/* ---------------- 目标与里程碑 ---------------- */
+const MILESTONES = [
+  { id: 'h10', label: '累计 10 小时', type: 'hours', n: 10 },
+  { id: 'h50', label: '累计 50 小时', type: 'hours', n: 50 },
+  { id: 'h100', label: '累计 100 小时', type: 'hours', n: 100 },
+  { id: 'h300', label: '累计 300 小时', type: 'hours', n: 300 },
+  { id: 's7', label: '连续 7 天', type: 'streak', n: 7 },
+  { id: 's30', label: '连续 30 天', type: 'streak', n: 30 },
+  { id: 'p50', label: '50 个番茄', type: 'pomo', n: 50 },
+  { id: 'p200', label: '200 个番茄', type: 'pomo', n: 200 }
+];
+
+function metricValue(type) {
+  if (type === 'hours') {
+    return Object.keys(state.days).reduce((a, k) => a + daySummary(state.days[k]).actual, 0) / 3600;
+  }
+  if (type === 'streak') return calcStreak();
+  return Object.keys(state.pomo.sessions).reduce((a, k) => a + (state.pomo.sessions[k] || []).length, 0);
+}
+
+function milestoneList() {
+  return MILESTONES.map(m => {
+    const v = metricValue(m.type);
+    return { ...m, value: v, reached: v >= m.n, progress: Math.min(100, Math.round(v / m.n * 100)) };
+  });
+}
+
+let lastMsCheck = 0;
+function checkMilestones(force) {
+  const now = Date.now();
+  if (!force && now - lastMsCheck < 60000) return;
+  lastMsCheck = now;
+  let changed = false;
+  MILESTONES.forEach(m => {
+    if (state.milestones[m.id]) return;
+    if (metricValue(m.type) >= m.n) {
+      state.milestones[m.id] = now;
+      changed = true;
+      setTimeout(() => toast('达成里程碑 · ' + m.label), 700);
+    }
+  });
+  if (changed) save();
+}
+
+function renderGoalCard() {
+  const el = $('#goalCard');
+  if (!el) return;
+  const keys = lastDays(7);
+  const hours = keys.reduce((a, k) => a + daySummary(state.days[k]).actual, 0) / 3600;
+  const goal = state.goalWeekly || 0;
+  const pct = goal ? Math.min(100, Math.round(hours / goal * 100)) : 0;
+  const ms = milestoneList();
+  const reached = ms.filter(m => m.reached);
+  const next = ms.find(m => !m.reached);
+
+  el.innerHTML = `
+    <div class="card-head" style="margin-bottom:14px">
+      <div>
+        <div class="micro-label">WEEKLY GOAL</div>
+        <h2 class="card-title">本周目标与里程碑</h2>
+      </div>
+      <button class="pill-btn" id="goalEdit">${goal ? '修改' : '设定目标'}</button>
+    </div>
+    ${goal
+      ? `<div class="goal-numbers"><b>${hours.toFixed(1)}</b><span>/ ${goal} 小时</span><i>${pct}%</i></div>
+         <div class="goal-track"><div class="goal-fill" style="width:${pct}%"></div></div>`
+      : `<div class="goal-empty">设一个本周投入目标（比如 25 小时）。<br>周末回看时，比「感觉挺努力」具体得多。</div>`}
+    <div class="ms-wrap">
+      ${ms.map(m => `<span class="ms-chip ${m.reached ? 'on' : ''}">${m.reached ? '✓ ' : ''}${m.label}</span>`).join('')}
+    </div>
+    <div class="goal-note">${reached.length} / ${ms.length} 已达成${next ? ` · 下一个：${next.label}（${next.progress}%）` : ' · 全部达成'}</div>`;
+
+  const btn = $('#goalEdit', el);
+  if (btn) btn.addEventListener('click', () => { haptic('light'); openGoalSheet(); });
+}
+
+function openGoalSheet() {
+  const cur = state.goalWeekly || 25;
+  openSheet(`
+    <div class="sheet-head">
+      <div style="flex:1">
+        <div class="sheet-eyebrow">GOAL · 周目标</div>
+        <h2 class="sheet-title">每周投入多少小时</h2>
+        <div class="sheet-meta">只影响统计页的进度条，不改变计划</div>
+      </div>
+      <button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </div>
+    <div class="form">
+      <div class="field">
+        <label>每周目标（小时）</label>
+        <input id="goalHours" type="number" inputmode="numeric" min="1" max="100" value="${cur}">
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" style="flex:1" id="goalClear">清除</button>
+      <button class="btn btn-primary" style="flex:1" id="goalSave">保存</button>
+    </div>`, panel => {
+    $('#goalSave', panel).addEventListener('click', () => {
+      const v = Math.round(Number($('#goalHours', panel).value));
+      if (!v || v < 1 || v > 100) { toast('填 1–100 之间的小时数'); return; }
+      state.goalWeekly = v;
+      save(true);
+      closeSheet();
+      refreshStats();
+      bindSettingsStatic();
+      toast(`本周目标 · ${v} 小时`);
+    });
+    $('#goalClear', panel).addEventListener('click', () => {
+      state.goalWeekly = 0;
+      save(true);
+      closeSheet();
+      refreshStats();
+      bindSettingsStatic();
+      toast('已清除周目标');
+    });
+  });
+}
+
+/* ---------------- 考试倒计时 ---------------- */
+function examDays() {
+  if (!state.exam || !state.exam.date) return null;
+  const target = parseKey(state.exam.date);
+  if (isNaN(target.getTime())) return null;
+  return Math.round((target - parseKey(todayKey())) / 86400000);
+}
+
+function renderExamPill() {
+  const el = $('#examPill');
+  if (!el) return;
+  const d = examDays();
+  if (d == null || d < 0) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = d === 0
+    ? `今天 · ${esc(state.exam.label)}`
+    : `距<b>${esc(state.exam.label)}</b>还有<b>${d}</b>天`;
+  el.onclick = () => { haptic('light'); openExamSheet(); };
+}
+
+function openExamSheet() {
+  const cur = state.exam || {};
+  openSheet(`
+    <div class="sheet-head">
+      <div style="flex:1">
+        <div class="sheet-eyebrow">COUNTDOWN · 倒计时</div>
+        <h2 class="sheet-title">考试倒计时</h2>
+        <div class="sheet-meta">显示在首页顶部，可随时改</div>
+      </div>
+      <button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </div>
+    <div class="form">
+      <div class="field"><label>名称</label><input id="exLabel" maxlength="8" value="${escAttr(cur.label || '考研')}" placeholder="考研"></div>
+      <div class="field"><label>考试日期</label><input id="exDate" type="date" value="${escAttr(cur.date || '')}"></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" style="flex:1" id="exClear">清除</button>
+      <button class="btn btn-primary" style="flex:1" id="exSave">保存</button>
+    </div>`, panel => {
+    $('#exSave', panel).addEventListener('click', () => {
+      const date = $('#exDate', panel).value;
+      const label = $('#exLabel', panel).value.trim() || '考研';
+      if (!date) { toast('选一个考试日期'); return; }
+      state.exam = { date, label };
+      save(true);
+      closeSheet();
+      renderHome();
+      bindSettingsStatic();
+      toast(`已设置 · 距${label} ${examDays()} 天`);
+    });
+    $('#exClear', panel).addEventListener('click', () => {
+      state.exam = null;
+      save(true);
+      closeSheet();
+      renderHome();
+      bindSettingsStatic();
+      toast('已清除倒计时');
+    });
+  });
+}
+function renderGoalSettings() {
+  const examSub = $('#examSub');
+  if (examSub) {
+    const d = examDays();
+    examSub.textContent = state.exam
+      ? `${state.exam.label} · ${state.exam.date}${d != null && d >= 0 ? `（还有 ${d} 天）` : '（已过）'}`
+      : '未设置';
+  }
+  const goalSub = $('#goalSub');
+  if (goalSub) goalSub.textContent = state.goalWeekly ? `${state.goalWeekly} 小时 / 周` : '未设置';
+}
+
+
 function taskSeconds(t) {
   const base = t.focusStart ? t.focusAcc + (Date.now() - t.focusStart) / 1000 : (t.focusAcc || 0);
   return base + (t.pomoAcc || 0);
@@ -245,10 +698,18 @@ function syncNative() {
         }))
       });
     }
-    const payload = JSON.stringify({ days: days, settings: { remind: state.remind, advance: state.advance } });
+    const payload = JSON.stringify({
+      days: days,
+      settings: { remind: state.remind, advance: state.advance },
+      exam: state.exam ? { date: state.exam.date, label: state.exam.label } : null
+    });
     // 时间、状态、提醒设置都没变时跳过：原生侧每次全量重建几十个闹钟，没必要
     if (payload === lastSyncJson) return;
-    try { n.schedule(payload); lastSyncJson = payload; } catch (e) {}
+    try {
+      n.schedule(payload);
+      lastSyncJson = payload;
+      if (n.refreshWidget) n.refreshWidget();
+    } catch (e) {}
   }, 500);
 }
 
@@ -360,6 +821,9 @@ function renderHome() {
 
   renderNow();
   renderTimeline();
+  renderExamPill();
+  renderCarryBanner();
+  renderReviewBar();
   updateClocks();
 }
 
@@ -567,6 +1031,7 @@ function completeTask(t) {
   t.modified = true;
   save(true);
   syncGuard();
+  checkMilestones();
   if (navigator.vibrate) navigator.vibrate(18);
   haptic('success');
   toast(t.actual > 60 ? '已完成 · ' + humanSec(t.actual) : '已完成 · 这段没有计时');
@@ -1192,6 +1657,7 @@ function pomoFinish() {
   pomoChime();
   haptic('success');
   syncGuard();
+  checkMilestones();
   toast(wasBreak ? '休息结束 · 开始下一轮专注' : `完成一个番茄 · ${minutes} 分钟`);
   renderHome();
   renderFocus();
@@ -2074,6 +2540,8 @@ function renderStats() {
     </div>
     ${state.demo ? '<div class="report-row" style="margin-top:12px;font-size:10px;color:var(--ink-3)">含演示数据 · 可在设置中清除</div>' : ''}`;
 
+  renderGoalCard();
+
   setTimeout(() => {
     $$('#bars .bar-fill').forEach(b => { b.style.height = b.dataset.h + '%'; });
     $$('#subjectList .subject-fill').forEach(b => { b.style.width = b.dataset.w + '%'; });
@@ -2588,6 +3056,7 @@ function layoutPages() {
 
 function bindSettingsStatic() {
   $('#tplSummary').textContent = `${state.template.length} 个时段 · ${hText(state.template.reduce((a, t) => a + Math.max(0, t.end - t.start) * 60, 0))}`;
+  renderGoalSettings();
 }
 
 /* ---------------- 启动 ---------------- */
@@ -2664,6 +3133,14 @@ function boot() {
   $('#sheetBackdrop').addEventListener('click', () => { haptic('light'); closeSheet(); });
   bindDetailCards();
 
+  // 新功能入口
+  $('#leftoverRow').addEventListener('click', () => { haptic('light'); openLeftoverSheet(); });
+  $('#reviewBar').addEventListener('click', () => { haptic('light'); openReviewSheet(); });
+  $('#btnWeekly').addEventListener('click', () => { haptic('light'); openWeeklyReport(); });
+  $('#btnExam').addEventListener('click', () => { haptic('light'); openExamSheet(); });
+  $('#btnGoal').addEventListener('click', () => { haptic('light'); openGoalSheet(); });
+  checkMilestones(true);
+
   $$('.scroll').forEach(sc => {
     sc.addEventListener('scroll', () => {
       const y = sc.scrollTop;
@@ -2688,6 +3165,7 @@ function boot() {
       checkPermissions();
       consumeNative();
       syncGuard();
+      checkMilestones();
     }
   });
 
@@ -2699,6 +3177,7 @@ function boot() {
     checkPermissions();
     consumeNative();
     syncGuard();
+    checkMilestones();
   };
   window.__openTask = id => {
     const rec = todayRec();
@@ -2754,6 +3233,7 @@ function boot() {
       ensureToday();
       renderHome();
       refreshStats();
+      checkMilestones(true);
     }
   }, 15000);
 }

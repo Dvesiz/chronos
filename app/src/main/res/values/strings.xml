@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">时序</string>
+    <string name="widget_desc">今日进度、下一项任务与考试倒计时</string>
 </resources>

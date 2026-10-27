@@ -134,6 +134,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        try {
+            ChronosWidgetProvider.refresh(this);
+        } catch (Exception ignored) {
+        }
         if (web != null) {
             web.post(() -> web.evaluateJavascript("window.__onNativeResume && window.__onNativeResume();", null));
         }
@@ -235,6 +239,15 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void schedule(String json) {
             AlarmScheduler.saveAndSchedule(MainActivity.this, json);
+        }
+
+        /** 计划 / 状态变化后刷新桌面小组件 */
+        @JavascriptInterface
+        public void refreshWidget() {
+            try {
+                ChronosWidgetProvider.refresh(MainActivity.this);
+            } catch (Exception ignored) {
+            }
         }
 
         @JavascriptInterface
