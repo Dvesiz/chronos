@@ -15,7 +15,9 @@
     syncing: false,
     booted: false,
     queuedState: null,
-    queue: []
+    queue: [],
+    pulling: false,
+    pollTimer: null
   };
 
   function clone(value) {
@@ -104,6 +106,7 @@
   async function flush() {
     if (!API_BASE || !state.loggedIn || state.syncing || !state.queue.length) return;
     state.syncing = true;
+    var uploaded = false;
     try {
       var result = await request('/v1/sync/events', {
         method: 'POST', body: JSON.stringify({ events: state.queue.slice(0, 20) })
@@ -114,11 +117,60 @@
       persistQueue();
       setHeadSeq(result.headSeq || headSeq());
       state.queuedState = clone(result.state || state.queuedState);
+      uploaded = true;
     } catch (e) {
       /* 网络恢复后由下一次保存或 online 事件重试 */
     } finally {
       state.syncing = false;
+      if (uploaded && state.loggedIn && state.queue.length) flush();
     }
+  }
+  async function pullLatest() {
+    if (!API_BASE || !state.loggedIn || !state.booted || state.pulling || state.syncing) return;
+    state.pulling = true;
+    try {
+      var head = await request('/v1/sync/head');
+      if (state.syncing) return;
+      var remoteSeq = Number(head && head.headSeq || 0);
+      if (remoteSeq <= headSeq()) { flush(); return; }
+      var remote = await request('/v1/sync/snapshot');
+      if (!remote || !remote.state) return;
+      remoteSeq = Number(remote.headSeq || remoteSeq);
+      setHeadSeq(remoteSeq);
+      if (state.queue.length) {
+        var merged = clone(remote.state);
+        state.queue.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
+        var rebasedOps = diff(remote.state, merged);
+        state.queue = rebasedOps.length ? [{ eventId: randomId(), deviceId: deviceId(), baseSeq: remoteSeq, ops: rebasedOps, clientAt: Date.now() }] : [];
+        state.queuedState = clone(merged);
+        persistQueue();
+        if (JSON.stringify(merged) !== JSON.stringify(state.get())) state.apply(clone(merged), true);
+        flush();
+      } else {
+        state.queuedState = clone(remote.state);
+        if (JSON.stringify(remote.state) !== JSON.stringify(state.get())) state.apply(clone(remote.state), true);
+      }
+    } catch (e) {
+      /* Keep local state and retry on the next poll, resume, or online event. */
+    } finally {
+      state.pulling = false;
+    }
+  }
+  function applyLocalOps(value, ops) {
+    var root = clone(value) || {};
+    (ops || []).forEach(function (op) {
+      if (!op.path || !op.path.length) { if (op.op === 'replace') root = clone(op.value) || {}; return; }
+      var parent = root;
+      for (var i = 0; i < op.path.length - 1; i++) {
+        var key = op.path[i];
+        if (!parent[key] || typeof parent[key] !== 'object') parent[key] = {};
+        parent = parent[key];
+      }
+      var last = op.path[op.path.length - 1];
+      if (op.op === 'remove') delete parent[last];
+      else if (op.op === 'set') parent[last] = clone(op.value);
+    });
+    return root;
   }
   async function loginReady(auth, localState) {
     if (!API_BASE || !auth) return;
@@ -169,7 +221,7 @@
       persistQueue();
     },
     updateProfile: async function (profile) { return request('/v1/account/profile', { method: 'PATCH', body: JSON.stringify(profile) }); },
-    feedback: async function (body) { return request('/v1/feedback', { method: 'POST', body: JSON.stringify({ body: body, appVersion: '2.6.9' }) }); },
+    feedback: async function (body) { return request('/v1/feedback', { method: 'POST', body: JSON.stringify({ body: body, appVersion: '2.7.0' }) }); },
     latest: async function () { return request('/v1/app/latest'); },
     queueState: function (nextState) {
       if (!API_BASE || !state.loggedIn || !state.booted) return;
@@ -201,9 +253,13 @@
           }
           flush();
         }).catch(function () { flush(); });
+        state.pollTimer = global.setInterval(pullLatest, 5000);
       }
     },
-    isSyncing: function () { return state.syncing; }
+    isSyncing: function () { return state.syncing || state.pulling; },
+    syncNow: pullLatest
   };
-  global.addEventListener('online', flush);
+  global.addEventListener('online', function () { pullLatest(); flush(); });
+  global.addEventListener('focus', pullLatest);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) pullLatest(); });
 })(window);

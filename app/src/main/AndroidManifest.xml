@@ -2,8 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.dvesiz.chronos"
-    android:versionCode="24"
-    android:versionName="2.6.9">
+    android:versionCode="25"
+    android:versionName="2.7.0">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
 

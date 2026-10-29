@@ -3748,6 +3748,7 @@ function boot() {
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
+      if (window.ChronosCloud && window.ChronosCloud.syncNow) window.ChronosCloud.syncNow();
       settleStaleTimers();
       ensureToday();
       tickPomo();
@@ -3761,6 +3762,7 @@ function boot() {
   });
 
   window.__onNativeResume = () => {
+    if (window.ChronosCloud && window.ChronosCloud.syncNow) window.ChronosCloud.syncNow();
     settleStaleTimers();
     ensureToday();
     tickPomo();

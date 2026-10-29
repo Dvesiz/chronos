@@ -8,7 +8,7 @@
 
 为学习与长期规划打造的 Android 时间管理应用 —— 计划、专注、复盘，一个闭环。
 
-[![version](https://img.shields.io/badge/version-2.6.9-FF5A1F?style=flat-square)]()
+[![version](https://img.shields.io/badge/version-2.7.0-FF5A1F?style=flat-square)]()
 [![platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?style=flat-square)]()
 [![deps](https://img.shields.io/badge/deps-zero-0074D9?style=flat-square)]()
 [![build](https://img.shields.io/badge/build-No%20Gradle-24292E?style=flat-square)]()
@@ -20,7 +20,7 @@
 
 ### 下载安装
 
-[![下载 APK](https://img.shields.io/badge/下载-APK%202.6.7-FF5A1F?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.6.9.apk)
+[![下载 APK](https://img.shields.io/badge/下载-APK%202.7.0-FF5A1F?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.0.apk)
 
 **Android 8.0+** ｜ 约 110 KB ｜ 无后台联网、无账号、数据全部存在本机
 
