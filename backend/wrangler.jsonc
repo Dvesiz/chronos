@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "chronos-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "APP_ORIGIN": "https://dvesiz.github.io/chronos",
+    "RESEND_FROM_EMAIL": "system@mail.donghangyu.dpdns.org",
+    "ACCESS_TTL_SECONDS": "900",
+    "REFRESH_TTL_SECONDS": "2592000"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "chronos-db",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

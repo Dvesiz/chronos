@@ -67,6 +67,27 @@ function defaultTemplate() {
 /* ---------------- 状态 ---------------- */
 let state = loadState();
 
+function applyCloudState(nextState, immediate) {
+  if (!nextState || typeof nextState !== 'object') return;
+  state = normalizeState(nextState);
+  save(!!immediate);
+  renderAccountUI();
+  renderHome();
+  refreshStats();
+}
+
+function initCloudSync() {
+  if (!window.ChronosCloud) return;
+  window.ChronosCloud.init({
+    get: () => state,
+    apply: applyCloudState
+  });
+}
+
+function queueCloudSync() {
+  if (window.ChronosCloud && window.ChronosCloud.queueState) window.ChronosCloud.queueState(state);
+}
+
 function loadState() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { s = null; }
@@ -164,6 +185,7 @@ function save(immediate) {
       try { n.saveState(JSON.stringify(state)); } catch (e) {}
     }
     syncNative();
+    queueCloudSync();
   };
   if (immediate) { clearTimeout(saveTimer); doSave(); return; }
   clearTimeout(saveTimer);
@@ -2290,7 +2312,11 @@ function writeJson(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
 }
 
-function requestCodeFor(email) {
+async function requestCodeFor(email) {
+  if (window.ChronosCloud && window.ChronosCloud.enabled()) {
+    await window.ChronosCloud.sendCode(email);
+    return { code: null, mode: 'sent' };
+  }
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const store = readJson(CODES_KEY, {});
   store[email] = { code, exp: Date.now() + 10 * 60 * 1000 };
@@ -2415,26 +2441,40 @@ function openAuthSheet() {
     sendBtn.addEventListener('click', () => {
       const email = emailIn.value.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('请输入有效的邮箱地址'); return; }
-      const r = requestCodeFor(email);
-      sentCode = r.code; sentMode = r.mode;
-      haptic('light');
-      startCooldown();
-      if (r.mode === 'sent') {
-        hint.hidden = false;
-        hint.textContent = `验证码已发送到 ${email}，10 分钟内有效`;
-        toast('验证码已发送 · 查收邮箱');
-      } else {
-        hint.hidden = false;
-        hint.textContent = `本机模式 · 验证码 ${r.code}（未接邮箱服务，仅本机校验）`;
-        toast('开发模式 · 验证码见下方提示');
-      }
+      requestCodeFor(email).then(r => {
+        sentCode = r.code; sentMode = r.mode;
+        haptic('light');
+        startCooldown();
+        if (r.mode === 'sent') {
+          hint.hidden = false;
+          hint.textContent = `验证码已发送到 ${email}，10 分钟内有效`;
+          toast('验证码已发送 · 查收邮箱');
+        } else {
+          hint.hidden = false;
+          hint.textContent = `本机模式 · 验证码 ${r.code}（未接邮箱服务，仅本机校验）`;
+          toast('开发模式 · 验证码见下方提示');
+        }
+      }).catch(() => toast('验证码发送失败，请稍后重试'));
     });
 
-    $('#auNext', panel).addEventListener('click', () => {
+    $('#auNext', panel).addEventListener('click', async () => {
       const email = emailIn.value.trim().toLowerCase();
       const code = codeIn.value.trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('请输入有效的邮箱地址'); return; }
       if (!/^\d{6}$/.test(code)) { toast('请输入 6 位验证码'); return; }
+      if (window.ChronosCloud && window.ChronosCloud.enabled()) {
+        try {
+          const auth = await window.ChronosCloud.verify(email, code);
+          const users = readJson(USERS_KEY, {});
+          const local = users[email] || {};
+          setUser({ ...local, ...(auth.user || {}), email });
+          closeSheet();
+          toast(`欢迎回来 · ${auth.user && auth.user.nickname || local.nickname || email}`);
+        } catch (e) {
+          toast(e && e.code === 'code_invalid' ? '验证码不正确或已过期' : '登录失败，请稍后重试');
+        }
+        return;
+      }
       if (!verifyCodeFor(email, code)) { toast('验证码不正确或已过期'); return; }
       const users = readJson(USERS_KEY, {});
       if (users[email]) {
@@ -2594,10 +2634,14 @@ function openProfileSheet() {
       users[state.user.email] = nu;
       writeJson(USERS_KEY, users);
       setUser(nu);
+      if (window.ChronosCloud && window.ChronosCloud.hasSession()) {
+        window.ChronosCloud.updateProfile({ nickname, avatar: picked }).catch(() => toast('本地已保存，云端资料稍后重试'));
+      }
       closeSheet();
       toast('资料已保存');
     });
-    $('#pfLogout', panel).addEventListener('click', () => {
+    $('#pfLogout', panel).addEventListener('click', async () => {
+      if (window.ChronosCloud && window.ChronosCloud.hasSession()) await window.ChronosCloud.logout();
       setUser(null);
       closeSheet();
       toast('已退出登录 · 数据仍保留在本机');
@@ -3328,6 +3372,15 @@ function bindSettings() {
     if (n && n.openOverlaySettings) n.openOverlaySettings();
     else toast('浏览器预览中无法修改系统权限');
   });
+  $('#btnFeedback').addEventListener('click', () => openFeedbackSheet());
+  $('#btnCheckUpdate').addEventListener('click', async () => {
+    if (!window.ChronosCloud || !window.ChronosCloud.enabled()) { toast('后端尚未配置，暂时无法检查更新'); return; }
+    try {
+      const result = await window.ChronosCloud.latest();
+      if (result && result.release) toast('发现新版本 ' + result.release.version);
+      else toast('当前已是最新版本');
+    } catch (e) { toast('检查更新失败，请稍后重试'); }
+  });
   $('#btnExport').addEventListener('click', () => {
     const snapshot = Object.assign({}, state, {
       user: state.user ? Object.assign({}, state.user, { avatarData: null }) : null
@@ -3504,7 +3557,25 @@ function checkPermissions() {
 
   const v = n.appVersion ? n.appVersion() : '';
   if (v) $('#aboutVer').textContent = 'Version ' + v + ' · 个人版';
-  $('#envHint').textContent = '数据仅保存在本机 · 不联网、不上传';
+  $('#envHint').textContent = window.ChronosCloud && window.ChronosCloud.hasSession()
+    ? '已登录 · 本地优先，云端同步已开启'
+    : '未登录 · 数据仅保存在本机';
+}
+
+async function openFeedbackSheet() {
+  const html = `<div class="sheet-head"><div style="flex:1"><div class="sheet-eyebrow">FEEDBACK · 反馈</div><h2 class="sheet-title">告诉我哪里可以更好</h2></div><button class="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div><div class="form"><div class="field"><label>反馈内容</label><textarea id="feedbackBody" maxlength="4000" rows="5" placeholder="遇到了什么问题，或者希望增加什么？"></textarea></div></div><div class="sheet-actions"><button class="btn btn-primary" id="feedbackSend">发送反馈</button></div>`;
+  openSheet(html, panel => {
+    $('#feedbackSend', panel).addEventListener('click', async () => {
+      const body = $('#feedbackBody', panel).value.trim();
+      if (!body) { toast('请先写下反馈'); return; }
+      if (!window.ChronosCloud || !window.ChronosCloud.enabled()) { toast('后端尚未配置，反馈暂不可发送'); return; }
+      try {
+        await window.ChronosCloud.feedback(body);
+        closeSheet();
+        toast('反馈已发送，谢谢');
+      } catch (e) { toast('发送失败，请稍后重试'); }
+    });
+  });
 }
 
 /* ---------------- 反馈 ---------------- */
@@ -3554,6 +3625,7 @@ function boot() {
     }
   } catch (e) {}
   state = loadState();
+  initCloudSync();
   settleStaleTimers(); // 前一天忘了停的计时先按 0 点结算
   ensureToday();
   tickPomo();          // 先把"启动前就已到点"的番茄结算掉，避免带着过期 endAt 去起守护

@@ -1,5 +1,10 @@
 # 构建产物
 build/
+
+# 本地后端配置
+backend/.dev.vars
+backend/.wrangler/
+
 *.apk
 *.ap_
 *.dex

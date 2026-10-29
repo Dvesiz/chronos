@@ -1,0 +1,15 @@
+{
+  "name": "chronos-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-isolation=none test/*.test.js",
+    "dev": "wrangler dev",
+    "db:migrate:local": "wrangler d1 migrations apply chronos-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply chronos-db --remote",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
