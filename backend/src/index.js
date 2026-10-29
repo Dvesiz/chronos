@@ -41,7 +41,8 @@ async function bodyJson(request) {
   if (length > MAX_BODY) throw new Error('body_too_large');
   const text = await request.text();
   if (text.length > MAX_BODY) throw new Error('body_too_large');
-  return JSON.parse(text || '{}');
+  try { return JSON.parse(text || '{}'); }
+  catch { throw new Error('json_invalid'); }
 }
 function clientIp(request) { return request.headers.get('CF-Connecting-IP') || 'unknown'; }
 function clientKey(request, email = '') { return `${clientIp(request)}:${email}`; }
@@ -215,6 +216,7 @@ async function deleteAccount(env, user) {
 }
 async function feedback(request, env, user) {
   const data = await bodyJson(request);
+  if (!(await limited(env, `feedback:${clientIp(request)}`, 10, 15 * 60 * 1000))) return error('rate_limited', 429, '提交过于频繁，请稍后再试');
   const body = String(data.body || '').trim();
   if (!body || body.length > 4000) return error('feedback_invalid', 400, '反馈内容不能为空且不能超过 4000 字');
   await env.DB.prepare('INSERT INTO feedback (id,user_id,email,kind,body,app_version,created_at) VALUES (?,?,?,?,?,?,?)')
@@ -251,6 +253,7 @@ export default {
       return withCors(error('not_found', 404), cors);
     } catch (err) {
       if (err?.message === 'body_too_large') return withCors(error('body_too_large', 413), cors);
+      if (err?.message === 'json_invalid') return withCors(error('json_invalid', 400, '请求格式不正确'), cors);
       if (err?.message?.startsWith('missing_config:') || err?.message === 'JWT_SECRET_NOT_CONFIGURED') return withCors(error('server_not_configured', 503, '服务端尚未完成安全配置'), cors);
       console.error(err);
       return withCors(error('internal_error', 500), cors);
