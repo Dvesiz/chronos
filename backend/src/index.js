@@ -15,6 +15,9 @@ function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...headers } });
 }
 function error(code, status, message = code) { return json({ error: code, message }, status); }
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
 function withCors(response, cors) {
   const headers = new Headers(response.headers);
   Object.entries(cors).forEach(([key, value]) => headers.set(key, value));
@@ -96,7 +99,38 @@ async function sendCode(request, env) {
   const id = randomId();
   await env.DB.prepare('DELETE FROM auth_codes WHERE email=? OR expires_at<?').bind(email, now()).run();
   await env.DB.prepare('INSERT INTO auth_codes (id,email,code_hash,expires_at,attempts,created_at) VALUES (?,?,?,?,0,?)').bind(id, email, await hashCode(email, code, env), now() + CODE_TTL, now()).run();
-  const mail = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ from: env.RESEND_FROM_EMAIL, to: [email], subject: '时序 Chronos · 登录验证码', html: `<div style="font-family:-apple-system,sans-serif;padding:28px"><h2>你的登录验证码</h2><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ff5a1f">${code}</div><p>10 分钟内有效。若非本人操作，请忽略此邮件。</p></div>` }) });
+  const subject = '\u65f6\u5e8f Chronos \u00b7 \u767b\u5f55\u9a8c\u8bc1\u7801';
+  const text = `\u65f6\u5e8f Chronos \u767b\u5f55\u9a8c\u8bc1\u7801\n\n\u4f60\u7684\u9a8c\u8bc1\u7801\uff1a${code}\n\n\u6b64\u9a8c\u8bc1\u7801\u5c06\u5728 10 \u5206\u949f\u540e\u5931\u6548\u3002\u82e5\u975e\u672c\u4eba\u64cd\u4f5c\uff0c\u8bf7\u5ffd\u7565\u6b64\u90ae\u4ef6\u3002`;
+  const html = `
+    <!doctype html>
+    <html lang="zh-CN">
+      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+      <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#202124;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+          <tr><td align="center" style="padding:36px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:520px;">
+              <tr><td style="padding:0 0 16px 4px;font-size:14px;font-weight:700;color:#24262a;">\u65f6\u5e8f <span style="font-weight:400;color:#777b82;">CHRONOS</span></td></tr>
+              <tr><td style="padding:32px 28px;background-color:#ffffff;border:1px solid #e7e8eb;border-radius:12px;">
+                <p style="margin:0 0 12px;font-size:12px;line-height:18px;font-weight:700;letter-spacing:1px;color:#ff5a1f;">\u767b\u5f55\u5b89\u5168\u9a8c\u8bc1</p>
+                <h1 style="margin:0 0 10px;font-size:24px;line-height:32px;font-weight:700;color:#202124;">\u4f60\u7684\u767b\u5f55\u9a8c\u8bc1\u7801</h1>
+                <p style="margin:0;font-size:14px;line-height:22px;color:#62666d;">\u4f7f\u7528\u4e0b\u65b9\u9a8c\u8bc1\u7801\u5b8c\u6210\u767b\u5f55\u3002</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 20px;background-color:#fff5f0;border:1px solid #ffe1d3;border-radius:8px;">
+                  <tr><td align="center" style="padding:20px 12px;font-size:34px;line-height:42px;font-weight:700;letter-spacing:8px;color:#ff5a1f;">${code}</td></tr>
+                </table>
+                <p style="margin:0;font-size:13px;line-height:21px;color:#62666d;">\u9a8c\u8bc1\u7801 <strong style="color:#35383d;">10 \u5206\u949f\u5185\u6709\u6548</strong>，\u8bf7\u52ff\u8f6c\u53d1\u7ed9\u4ed6\u4eba\u3002</p>
+                <p style="margin:16px 0 0;font-size:13px;line-height:21px;color:#8a8e95;">\u5982\u679c\u8fd9\u4e0d\u662f\u4f60\u53d1\u8d77\u7684\u64cd\u4f5c，\u53ef\u4ee5\u5ffd\u7565\u6b64\u90ae\u4ef6\u3002</p>
+              </td></tr>
+              <tr><td align="center" style="padding:18px 12px 0;font-size:12px;line-height:18px;color:#969aa1;">\u6b64\u90ae\u4ef6\u7531\u65f6\u5e8f Chronos \u81ea\u52a8\u53d1\u9001，\u8bf7\u52ff\u76f4\u63a5\u56de\u590d\u3002</td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+    </html>`;
+  const mail = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ from: env.RESEND_FROM_EMAIL, to: [email], subject, html, text })
+  });
   if (!mail.ok) { await env.DB.prepare('DELETE FROM auth_codes WHERE id=?').bind(id).run(); return error('email_send_failed', 502, '验证码发送失败，请稍后重试'); }
   return json({ ok: true, expiresIn: CODE_TTL / 1000 });
 }
@@ -221,17 +255,52 @@ async function notifyFeedback(env, feedback) {
   const to = String(env.FEEDBACK_TO_EMAIL || '').trim();
   if (!to) return false;
   const subject = `Chronos 新反馈 · ${feedback.appVersion || '未知版本'}`;
+  const details = [
+    ['用户邮箱', feedback.email || '未提供'],
+    ['用户 ID', feedback.userId || '未登录'],
+    ['应用版本', feedback.appVersion || '未知'],
+    ['反馈类型', feedback.kind]
+  ];
   const text = [
     `反馈内容：${feedback.body}`,
-    `用户邮箱：${feedback.email || '未提供'}`,
-    `用户 ID：${feedback.userId || '未登录'}`,
-    `应用版本：${feedback.appVersion || '未知'}`,
-    `反馈类型：${feedback.kind}`
-  ].join('\\n');
+    ...details.map(([label, value]) => `${label}：${value}`)
+  ].join('\n');
+  const htmlDetails = details.map(([label, value]) => `
+    <tr>
+      <td style="width:104px;padding:11px 12px 11px 0;border-top:1px solid #eceef0;font-size:13px;line-height:20px;color:#858990;vertical-align:top;">${escapeHtml(label)}</td>
+      <td style="padding:11px 0;border-top:1px solid #eceef0;font-size:13px;line-height:20px;color:#35383d;word-break:break-word;vertical-align:top;">${escapeHtml(value)}</td>
+    </tr>`).join('');
+  const htmlBody = escapeHtml(feedback.body).replace(/\r?\n/g, '<br>');
+  const html = `
+    <!doctype html>
+    <html lang="zh-CN">
+      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+      <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#202124;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3f4f6;">
+          <tr><td align="center" style="padding:36px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
+              <tr><td style="padding:0 0 16px 4px;font-size:14px;font-weight:700;color:#24262a;">时序 <span style="font-weight:400;color:#777b82;">CHRONOS</span></td></tr>
+              <tr><td style="padding:30px 28px;background-color:#ffffff;border:1px solid #e7e8eb;border-radius:12px;">
+                <p style="margin:0 0 12px;font-size:12px;line-height:18px;font-weight:700;letter-spacing:1px;color:#ff5a1f;">产品反馈</p>
+                <h1 style="margin:0 0 8px;font-size:23px;line-height:31px;font-weight:700;color:#202124;">收到一条新反馈</h1>
+                <p style="margin:0;font-size:14px;line-height:22px;color:#777b82;">Chronos 用户提交了新的反馈，请查看内容与相关信息。</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 22px;background-color:#f7f8f9;border:1px solid #eceef0;border-radius:8px;">
+                  <tr><td style="padding:18px 20px;font-size:14px;line-height:23px;color:#303238;word-break:break-word;">${htmlBody}</td></tr>
+                </table>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  ${htmlDetails}
+                </table>
+              </td></tr>
+              <tr><td align="center" style="padding:18px 12px 0;font-size:12px;line-height:18px;color:#969aa1;">此通知由时序 Chronos 自动发送。</td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+    </html>`;
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ from: env.RESEND_FROM_EMAIL, to: [to], subject, text })
+    body: JSON.stringify({ from: env.RESEND_FROM_EMAIL, to: [to], subject, html, text })
   });
   return response.ok;
 }

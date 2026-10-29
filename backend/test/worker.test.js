@@ -40,6 +40,35 @@ test('returns a client error for malformed JSON', async () => {
   assert.equal((await response.json()).error, 'json_invalid');
 });
 
+test('sends a styled verification email with a plain text fallback', async () => {
+  const db = feedbackDb();
+  const sent = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    sent.push({ url, options });
+    return new Response('{}', { status: 200 });
+  };
+  try {
+    const response = await worker.fetch(new Request('https://api.example/v1/auth/send-code', {
+      method: 'POST',
+      headers: { Origin: 'https://dvesiz.github.io/chronos', 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'USER@example.com' })
+    }), env({ DB: db }));
+    assert.equal(response.status, 200);
+    assert.equal(sent.length, 1);
+    const mail = JSON.parse(sent[0].options.body);
+    assert.deepEqual(mail.to, ['user@example.com']);
+    assert.equal(mail.subject, '时序 Chronos · 登录验证码');
+    const code = mail.text.match(/\d{6}/)?.[0];
+    assert.ok(code);
+    assert.match(mail.html, new RegExp(`>${code}<`));
+    assert.match(mail.html, /10 分钟内有效/);
+    assert.match(mail.text, new RegExp(`你的验证码：${code}`));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('handles CORS preflight and rejects unauthenticated sync', async () => {
   const preflight = await worker.fetch(new Request('https://api.example/v1/sync/snapshot', { method: 'OPTIONS', headers: { Origin: 'https://dvesiz.github.io/chronos' } }), env());
   assert.equal(preflight.status, 204);
@@ -61,7 +90,7 @@ test('notifies the owner after storing feedback', async () => {
     const response = await worker.fetch(new Request('https://api.example/v1/feedback', {
       method: 'POST',
       headers: { Origin: 'https://dvesiz.github.io/chronos', 'content-type': 'application/json' },
-      body: JSON.stringify({ body: '同步反馈', email: 'user@example.com', appVersion: '2.7.1' })
+      body: JSON.stringify({ body: '<script>alert("x")</script>\n同步反馈', email: 'user@example.com', appVersion: '2.7.1' })
     }), env({ DB: db, FEEDBACK_TO_EMAIL: 'owner@example.com' }));
     assert.equal(response.status, 201);
     assert.equal(sent.length, 1);
@@ -69,6 +98,9 @@ test('notifies the owner after storing feedback', async () => {
     const mail = JSON.parse(sent[0].options.body);
     assert.deepEqual(mail.to, ['owner@example.com']);
     assert.match(mail.text, /同步反馈/);
+    assert.match(mail.html, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;/);
+    assert.doesNotMatch(mail.html, /<script>alert\("x"\)<\/script>/);
+    assert.match(mail.html, /2\.7\.1/);
   } finally {
     globalThis.fetch = originalFetch;
   }
