@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "chronos-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "6688a72a-7a76-41bd-9ffb-b1351baee2ea",
       "migrations_dir": "migrations"
     }
   ]

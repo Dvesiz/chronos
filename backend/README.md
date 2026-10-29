@@ -29,7 +29,7 @@ The local API is normally at `http://localhost:8787`.
 
 ## Production deployment
 
-Do not reuse the credentials from `相关配置.txt`. They were exposed and must be revoked/rotated first, including the Resend key, MySQL password, Redis password, S3 access/secret key, and Turnstile secret.
+The current deployment uses the existing Resend key from `相关配置.txt` because the owner explicitly requested it. Keep it only in the Worker Secret; never commit or print it. Other credentials from that file (MySQL password, Redis password, S3 access/secret key, and Turnstile secret) are unrelated to this Worker and must not be copied into it.
 
 1. Authenticate Wrangler with the Cloudflare account that owns the Worker and D1 database.
 2. Create the database:

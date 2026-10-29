@@ -4,6 +4,7 @@ build/
 # 本地后端配置
 backend/.dev.vars
 backend/.wrangler/
+backend/node_modules/
 
 *.apk
 *.ap_
