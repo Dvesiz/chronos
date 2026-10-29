@@ -217,13 +217,44 @@ async function deleteAccount(env, user) {
   ]);
   return json({ ok: true });
 }
+async function notifyFeedback(env, feedback) {
+  const to = String(env.FEEDBACK_TO_EMAIL || '').trim();
+  if (!to) return false;
+  const subject = `Chronos 新反馈 · ${feedback.appVersion || '未知版本'}`;
+  const text = [
+    `反馈内容：${feedback.body}`,
+    `用户邮箱：${feedback.email || '未提供'}`,
+    `用户 ID：${feedback.userId || '未登录'}`,
+    `应用版本：${feedback.appVersion || '未知'}`,
+    `反馈类型：${feedback.kind}`
+  ].join('\\n');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ from: env.RESEND_FROM_EMAIL, to: [to], subject, text })
+  });
+  return response.ok;
+}
 async function feedback(request, env, user) {
   const data = await bodyJson(request);
   if (!(await limited(env, `feedback:${clientIp(request)}`, 10, 15 * 60 * 1000))) return error('rate_limited', 429, '提交过于频繁，请稍后再试');
   const body = String(data.body || '').trim();
   if (!body || body.length > 4000) return error('feedback_invalid', 400, '反馈内容不能为空且不能超过 4000 字');
+  const feedback = {
+    userId: user?.id || null,
+    email: user?.email || String(data.email || '').slice(0, 254) || null,
+    kind: String(data.kind || 'general').slice(0, 32),
+    body,
+    appVersion: String(data.appVersion || '').slice(0, 32)
+  };
   await env.DB.prepare('INSERT INTO feedback (id,user_id,email,kind,body,app_version,created_at) VALUES (?,?,?,?,?,?,?)')
-    .bind(randomId(), user?.id || null, user?.email || String(data.email || '').slice(0, 254) || null, String(data.kind || 'general').slice(0, 32), body, String(data.appVersion || '').slice(0, 32), now()).run();
+    .bind(randomId(), feedback.userId, feedback.email, feedback.kind, feedback.body, feedback.appVersion, now()).run();
+  try {
+    const notified = await notifyFeedback(env, feedback);
+    if (!notified) console.error('feedback_notification_failed');
+  } catch (err) {
+    console.error('feedback_notification_failed', err);
+  }
   return json({ ok: true }, 201);
 }
 async function latest(env) {
