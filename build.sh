@@ -11,14 +11,27 @@ OUT=$ROOT/build
 VERSION=$(awk -F'"' '/android:versionName=/{print $2; exit}' "$SRC/AndroidManifest.xml")
 [ -n "$VERSION" ] || VERSION="dev"
 
+# Android SDK tools use platform-specific suffixes on Windows.
+find_tool() {
+  for candidate in "$BT/$1" "$BT/$1.bat" "$BT/$1.exe"; do
+    [ -f "$candidate" ] && { printf '%s' "$candidate"; return; }
+  done
+  echo "Missing Android build tool: $1" >&2
+  exit 1
+}
+AAPT2=$(find_tool aapt2)
+D8=$(find_tool d8)
+ZIPALIGN=$(find_tool zipalign)
+APKSIGNER=$(find_tool apksigner)
+
 rm -rf "$OUT"
 mkdir -p "$OUT/res" "$OUT/gen" "$OUT/classes" "$OUT/dex"
 
 echo "==> compile resources"
-"$BT/aapt2" compile --dir "$SRC/res" -o "$OUT/res/resources.zip"
+"$AAPT2" compile --dir "$SRC/res" -o "$OUT/res/resources.zip"
 
 echo "==> link resources"
-"$BT/aapt2" link \
+"$AAPT2" link \
   -o "$OUT/base.apk" \
   -I "$AJ" \
   --manifest "$SRC/AndroidManifest.xml" \
@@ -34,23 +47,36 @@ echo "==> package assets"
 
 echo "==> compile java"
 find "$SRC/java" "$OUT/gen" -name '*.java' > "$OUT/sources.txt"
+# MSYS/Cygwin find emits /d/... paths, while Windows javac expects D:\\....
+if command -v cygpath >/dev/null 2>&1; then
+  while IFS= read -r source; do cygpath -w "$source"; done < "$OUT/sources.txt" > "$OUT/sources-win.txt"
+  SOURCE_LIST="$OUT/sources-win.txt"
+else
+  SOURCE_LIST="$OUT/sources.txt"
+fi
 if ! javac --release 11 -encoding UTF-8 \
   -classpath "$AJ" \
   -d "$OUT/classes" \
-  @"$OUT/sources.txt" > "$OUT/javac.log" 2>&1; then
+  @"$SOURCE_LIST" > "$OUT/javac.log" 2>&1; then
   cat "$OUT/javac.log"
   exit 1
 fi
 
 echo "==> dex"
 find "$OUT/classes" -name '*.class' > "$OUT/classes.txt"
-"$BT/d8" --release --min-api 26 --lib "$AJ" --output "$OUT/dex" @"$OUT/classes.txt"
+if command -v cygpath >/dev/null 2>&1; then
+  while IFS= read -r class_file; do cygpath -w "$class_file"; done < "$OUT/classes.txt" > "$OUT/classes-win.txt"
+  CLASS_LIST="$OUT/classes-win.txt"
+else
+  CLASS_LIST="$OUT/classes.txt"
+fi
+"$D8" --release --min-api 26 --lib "$AJ" --output "$OUT/dex" @"$CLASS_LIST"
 
 echo "==> package dex"
 ( cd "$OUT/dex" && jar --update --file "$OUT/base.apk" --no-manifest classes.dex )
 
 echo "==> zipalign"
-"$BT/zipalign" -f -p 4 "$OUT/base.apk" "$OUT/aligned.apk"
+"$ZIPALIGN" -f -p 4 "$OUT/base.apk" "$OUT/aligned.apk"
 
 echo "==> sign"
 KS=$ROOT/keystore.jks
@@ -91,9 +117,9 @@ if [ ! -f "$KS" ]; then
     -validity 10000 -storepass "$KS_PASS" -keypass "$KPASS" \
     -dname "CN=Chronos, OU=Personal, O=Chronos, L=Shanghai, S=Shanghai, C=CN" >/dev/null 2>&1
 fi
-"$BT/apksigner" sign --ks "$KS" --ks-key-alias chronos \
+"$APKSIGNER" sign --ks "$KS" --ks-key-alias chronos \
   --ks-pass "pass:$KS_PASS" --key-pass "pass:$KPASS" \
   --out "$OUT/Chronos-$VERSION.apk" "$OUT/aligned.apk"
 
-"$BT/apksigner" verify --print-certs "$OUT/Chronos-$VERSION.apk" | head -4
+"$APKSIGNER" verify --print-certs "$OUT/Chronos-$VERSION.apk" | head -4
 ls -lh "$OUT/Chronos-$VERSION.apk"

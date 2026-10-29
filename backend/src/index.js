@@ -1,4 +1,4 @@
-import { applyOps, compactState, DEFAULT_STATE, diffState, validateEmail, validateEvent, validateStateSize } from './core.js';
+import { applyOps, compactState, DEFAULT_STATE, diffState, validateAvatarData, validateEmail, validateEvent, validateStateSize } from './core.js';
 import { hmac, randomId, sha256, signToken, verifyToken } from './crypto.js';
 import { requireConfig } from './config.js';
 
@@ -30,7 +30,7 @@ function originAllowed(origin, env) {
     'http://localhost:8787',
     'http://127.0.0.1:8787'
   ].filter(Boolean));
-  return allowed.has(origin);
+  return origin === 'null' || allowed.has(origin);
 }
 function corsHeaders(request, env) {
   const origin = request.headers.get('Origin');
@@ -68,9 +68,9 @@ async function getUser(request, env) {
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   const payload = await verifyToken(token, jwtSecret(env));
   if (!payload?.sid || !payload?.sub) return null;
-  const row = await env.DB.prepare('SELECT s.*, u.email, u.nickname, u.avatar FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.user_id=? AND s.revoked_at IS NULL AND s.expires_at>?').bind(payload.sid, payload.sub, now()).first();
+  const row = await env.DB.prepare('SELECT s.*, u.email, u.nickname, u.avatar, u.avatar_data FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.user_id=? AND s.revoked_at IS NULL AND s.expires_at>?').bind(payload.sid, payload.sub, now()).first();
   if (!row) return null;
-  return { id: row.user_id, email: row.email, nickname: row.nickname, avatar: row.avatar, sessionId: row.id, deviceId: row.device_id };
+  return { id: row.user_id, email: row.email, nickname: row.nickname, avatar: row.avatar, avatarData: row.avatar_data || '', sessionId: row.id, deviceId: row.device_id };
 }
 async function createSession(user, deviceId, env) {
   const issued = Math.floor(now() / 1000);
@@ -79,7 +79,7 @@ async function createSession(user, deviceId, env) {
   await env.DB.prepare('INSERT INTO sessions (id,user_id,device_id,refresh_hash,expires_at,created_at,last_seen_at) VALUES (?,?,?,?,?,?,?)')
     .bind(sid, user.id, deviceId, await sha256(refresh), now() + REFRESH_TTL * 1000, now(), now()).run();
   const access = await signToken({ sub: user.id, sid, exp: issued + ACCESS_TTL }, jwtSecret(env));
-  return { accessToken: access, refreshToken: refresh, expiresIn: ACCESS_TTL, user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar } };
+  return { accessToken: access, refreshToken: refresh, expiresIn: ACCESS_TTL, user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, avatarData: user.avatarData || '' } };
 }
 
 async function sendCode(request, env) {
@@ -114,17 +114,18 @@ async function verifyCode(request, env) {
   await env.DB.prepare('DELETE FROM auth_codes WHERE id=?').bind(row.id).run();
   const current = now();
   let user = await env.DB.prepare('SELECT * FROM users WHERE email=?').bind(email).first();
-  if (!user) { const id = randomId(); await env.DB.prepare('INSERT INTO users (id,email,created_at,updated_at) VALUES (?,?,?,?)').bind(id, email, current, current).run(); user = { id, email, nickname: '', avatar: 0 }; }
+  if (!user) { const id = randomId(); await env.DB.prepare('INSERT INTO users (id,email,created_at,updated_at) VALUES (?,?,?,?)').bind(id, email, current, current).run(); user = { id, email, nickname: '', avatar: 0, avatarData: '' }; }
+  else user = { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, avatarData: user.avatar_data || '' };
   return json(await createSession(user, deviceId, env));
 }
 
 async function refresh(request, env) {
   const data = await bodyJson(request);
   const tokenHash = await sha256(String(data.refreshToken || ''));
-  const row = await env.DB.prepare('SELECT s.*,u.email,u.nickname,u.avatar FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.refresh_hash=? AND s.revoked_at IS NULL AND s.expires_at>?').bind(tokenHash, now()).first();
+  const row = await env.DB.prepare('SELECT s.*,u.email,u.nickname,u.avatar,u.avatar_data FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.refresh_hash=? AND s.revoked_at IS NULL AND s.expires_at>?').bind(tokenHash, now()).first();
   if (!row) return error('refresh_invalid', 401, '登录已失效，请重新登录');
   await env.DB.prepare('UPDATE sessions SET revoked_at=?,last_seen_at=? WHERE id=?').bind(now(), now(), row.id).run();
-  return json(await createSession({ id: row.user_id, email: row.email, nickname: row.nickname, avatar: row.avatar }, row.device_id, env));
+  return json(await createSession({ id: row.user_id, email: row.email, nickname: row.nickname, avatar: row.avatar, avatarData: row.avatar_data || '' }, row.device_id, env));
 }
 
 async function appendEventWithCas(env, user, event) {
@@ -200,8 +201,10 @@ async function profile(request, env, user) {
   const data = await bodyJson(request);
   const nickname = String(data.nickname || '').trim().slice(0, 32);
   const avatar = Number.isInteger(data.avatar) ? Math.max(0, Math.min(31, data.avatar)) : 0;
-  await env.DB.prepare('UPDATE users SET nickname=?,avatar=?,updated_at=? WHERE id=?').bind(nickname, avatar, now(), user.id).run();
-  return json({ user: { id: user.id, email: user.email, nickname, avatar } });
+  const avatarData = data.avatarData || '';
+  if (!validateAvatarData(avatarData)) return error('avatar_invalid', 400, '头像格式不支持或文件过大');
+  await env.DB.prepare('UPDATE users SET nickname=?,avatar=?,avatar_data=?,updated_at=? WHERE id=?').bind(nickname, avatar, avatarData, now(), user.id).run();
+  return json({ user: { id: user.id, email: user.email, nickname, avatar, avatarData } });
 }
 async function deleteAccount(env, user) {
   await env.DB.batch([

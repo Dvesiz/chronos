@@ -45,6 +45,14 @@ export function validateEmail(value) {
   return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+const AVATAR_DATA_MAX = 700000;
+export function validateAvatarData(value) {
+  if (value === '' || value === null || value === undefined) return true;
+  return typeof value === 'string'
+    && value.length <= AVATAR_DATA_MAX
+    && /^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value);
+}
+
 export function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }

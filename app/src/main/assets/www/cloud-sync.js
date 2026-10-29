@@ -62,7 +62,20 @@
     var session = read(SESSION_KEY, null);
     var headers = Object.assign({ 'content-type': 'application/json' }, opts.headers || {});
     if (session && session.accessToken) headers.authorization = 'Bearer ' + session.accessToken;
-    var response = await fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }));
+    var controller = global.AbortController ? new AbortController() : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, 15000) : null;
+    var requestOpts = Object.assign({}, opts, { headers: headers });
+    if (controller) requestOpts.signal = controller.signal;
+    var response;
+    try {
+      response = await fetch(API_BASE + path, requestOpts);
+    } catch (e) {
+      var networkError = new Error(e && e.name === 'AbortError' ? 'cloud_timeout' : 'cloud_network');
+      networkError.code = networkError.message;
+      throw networkError;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     if (response.status === 401 && session && session.refreshToken && path !== '/v1/auth/refresh') {
       var refreshed = await fetch(API_BASE + '/v1/auth/refresh', {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -156,7 +169,7 @@
       persistQueue();
     },
     updateProfile: async function (profile) { return request('/v1/account/profile', { method: 'PATCH', body: JSON.stringify(profile) }); },
-    feedback: async function (body) { return request('/v1/feedback', { method: 'POST', body: JSON.stringify({ body: body, appVersion: '2.6.7' }) }); },
+    feedback: async function (body) { return request('/v1/feedback', { method: 'POST', body: JSON.stringify({ body: body, appVersion: '2.6.9' }) }); },
     latest: async function () { return request('/v1/app/latest'); },
     queueState: function (nextState) {
       if (!API_BASE || !state.loggedIn || !state.booted) return;

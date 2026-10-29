@@ -2430,7 +2430,7 @@ function openAuthSheet() {
       sendBtn.classList.add('cool');
       const tick = () => {
         if (!document.body.contains(sendBtn)) return;
-        if (cooldown <= 0) { sendBtn.textContent = '重新获取'; sendBtn.classList.remove('cool'); return; }
+        if (cooldown <= 0) { sendBtn.disabled = false; sendBtn.textContent = '重新获取'; sendBtn.classList.remove('cool'); return; }
         sendBtn.textContent = cooldown + 's';
         cooldown--;
         setTimeout(tick, 1000);
@@ -2441,6 +2441,9 @@ function openAuthSheet() {
     sendBtn.addEventListener('click', () => {
       const email = emailIn.value.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('请输入有效的邮箱地址'); return; }
+      if (cooldown > 0) return;
+      sendBtn.disabled = true;
+      sendBtn.textContent = '发送中…';
       requestCodeFor(email).then(r => {
         sentCode = r.code; sentMode = r.mode;
         haptic('light');
@@ -2454,7 +2457,13 @@ function openAuthSheet() {
           hint.textContent = `本机模式 · 验证码 ${r.code}（未接邮箱服务，仅本机校验）`;
           toast('开发模式 · 验证码见下方提示');
         }
-      }).catch(() => toast('验证码发送失败，请稍后重试'));
+      }).catch(e => {
+        sendBtn.disabled = false;
+        sendBtn.textContent = '获取验证码';
+        hint.hidden = false;
+        hint.textContent = e && e.code === 'rate_limited' ? '请求过于频繁，请稍后再试' : e && e.code === 'cloud_timeout' ? '网络响应超时，请检查网络后重试' : '发送失败，请稍后重试';
+        toast(hint.textContent);
+      });
     });
 
     $('#auNext', panel).addEventListener('click', async () => {
@@ -2635,7 +2644,9 @@ function openProfileSheet() {
       writeJson(USERS_KEY, users);
       setUser(nu);
       if (window.ChronosCloud && window.ChronosCloud.hasSession()) {
-        window.ChronosCloud.updateProfile({ nickname, avatar: picked }).catch(() => toast('本地已保存，云端资料稍后重试'));
+        window.ChronosCloud.updateProfile({ nickname, avatar: picked, avatarData }).then(result => {
+          if (result && result.user) setUser({ ...nu, ...(result.user || {}) });
+        }).catch(e => toast(e && e.code === 'avatar_invalid' ? '头像格式不支持或文件过大' : '本地已保存，云端资料稍后重试'));
       }
       closeSheet();
       toast('资料已保存');

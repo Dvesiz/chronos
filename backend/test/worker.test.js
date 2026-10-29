@@ -13,6 +13,12 @@ test('returns health with allowed CORS origin', async () => {
   assert.deepEqual(await response.json(), { ok: true, service: 'chronos-api' });
 });
 
+test('allows null origin for the Android file WebView', async () => {
+  const response = await worker.fetch(new Request('https://api.example/v1/auth/send-code', { method: 'OPTIONS', headers: { Origin: 'null', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' } }), env());
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'null');
+});
+
 test('returns a client error for malformed JSON', async () => {
   const response = await worker.fetch(new Request('https://api.example/v1/auth/send-code', { method: 'POST', body: '{bad', headers: { Origin: 'https://dvesiz.github.io/chronos', 'content-type': 'application/json' } }), env());
   assert.equal(response.status, 400);

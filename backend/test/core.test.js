@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeEmail,
   validateEmail,
+  validateAvatarData,
   validateEvent,
   applyOps,
   diffState,
@@ -14,6 +15,13 @@ test('normalizes and validates emails', () => {
   assert.equal(validateEmail('user@example.com'), true);
   assert.equal(validateEmail('bad'), false);
   assert.equal(validateEmail(''), false);
+});
+
+test('accepts bounded custom avatar data URLs', () => {
+  assert.equal(validateAvatarData('data:image/jpeg;base64,abc'), true);
+  assert.equal(validateAvatarData(''), true);
+  assert.equal(validateAvatarData('https://example.com/avatar.jpg'), false);
+  assert.equal(validateAvatarData('data:text/html;base64,abc'), false);
 });
 
 test('rejects oversized or unsafe sync events', () => {

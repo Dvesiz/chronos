@@ -67,11 +67,11 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
-        // 只需要加载 assets 里的本地页面：关掉 file:// 的跨域与跨源访问。
-        // 之前全开 + 无导航白名单，等于"任何被导航到的页面都能直接调用 window.Native"。
+        // 页面只允许从 android_asset 加载，导航白名单仍阻止外部页面调用 Native。
+        // 开启本地页面到 Worker 的 HTTPS 请求，兼容 Android WebView 的 file:// 来源。
         s.setAllowFileAccess(true);
         s.setAllowFileAccessFromFileURLs(false);
-        s.setAllowUniversalAccessFromFileURLs(false);
+        s.setAllowUniversalAccessFromFileURLs(true);
         s.setAllowContentAccess(true);   // 头像选择需要读 content:// 授权 URI
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
