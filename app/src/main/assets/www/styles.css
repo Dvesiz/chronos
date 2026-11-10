@@ -546,18 +546,15 @@ body:not(.motion) .pages { transition: none; }
 /* ============ 统计页 ============ */
 .stats-grid { max-width: var(--maxw); margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 
-/* 周期段：内部卡片纵向堆叠（手机），栅格只在外层 stats-grid 打开 */
-.stats-period { display: flex; flex-direction: column; gap: 16px; }
-
-/* 7/30 天切换时，只给周期段一个短促的呼吸高亮 */
-.stats-period.is-period-flash > * {
+/* 周期卡片：7/30 天切换时一起做一次短促的呼吸高亮，明确「变的是这一段」 */
+.period-card.is-period-flash {
   animation: statsPeriodFlash .58s var(--ease);
 }
 @keyframes statsPeriodFlash {
   0% { opacity: .45; transform: translateY(3px); }
   100% { opacity: 1; transform: none; }
 }
-body:not(.motion) .stats-period.is-period-flash > * { animation: none; }
+body:not(.motion) .period-card.is-period-flash { animation: none; }
 
 /* 按月回顾：可折叠头 + 折叠后的日历 */
 .stats-month-toggle {
@@ -1124,13 +1121,7 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
   .home-grid:has(> .exam-banner[hidden]) { grid-template-areas: "main side"; }
   .focus-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 20px; align-items: start; }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  .stats-period {
-    grid-column: span 2;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 18px;
-  }
-  .calendar-card, .stat-hero, .goal-card, .stats-period [data-detail="daily"], .stats-period [data-detail="category"], .report-card, .stats-section-label { grid-column: span 2; }
+  .calendar-card, .stat-hero, .goal-card, .stats-grid [data-detail="daily"], .stats-grid [data-detail="category"], .report-card, .stats-section-label { grid-column: span 2; }
   /* 平板/大屏空间充足：与 JS 的 760px 阈值保持一致，日历直接展开 */
   .calendar-card.is-collapsed { display: block; }
   .stats-month-toggle { cursor: default; }
@@ -1162,9 +1153,8 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 @media (min-width: 900px) {
   .scroll { padding-left: 44px; padding-right: 44px; }
   .stats-grid { grid-template-columns: repeat(6, 1fr); }
-  .stats-period { grid-template-columns: repeat(6, 1fr); }
   .calendar-card, .stat-hero, .stats-section-label { grid-column: span 6; }
-  .goal-card, .stats-period [data-detail="daily"], .stats-period [data-detail="category"], .report-card { grid-column: span 3; }
+  .goal-card, .stats-grid [data-detail="daily"], .stats-grid [data-detail="category"], .report-card { grid-column: span 3; }
   .sheet-panel { width: 640px; }
 }
 
@@ -1322,7 +1312,8 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
   pointer-events: none;
 }
 .tap-card:active::after { opacity: .7; }
-.stat-hero.tap-card::after, .stat-hero .tap-card::after { right: 18px; bottom: 14px; }
+/* 概览卡是 4 格数据平铺，右下角没有“详情”语义，不画箭头 */
+.stat-hero.tap-card::after, .stat-hero .tap-card::after { content: none; }
 
 .detail-wrap { padding-top: 4px; }
 .detail-table { display: flex; flex-direction: column; }

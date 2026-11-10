@@ -2934,13 +2934,17 @@ function refreshStats() { if (tabIndex === 2) renderStats(); }
  * 下面的「按月回顾」不参与区间切换。
  */
 function flashStatsPeriod() {
-  const grid = $('#statsPeriod');
-  if (!grid || !grid.classList) return;
-  grid.classList.remove('is-period-flash');
-  // 强制回流，保证连续切换也能重新触发动画
-  void grid.offsetWidth;
-  grid.classList.add('is-period-flash');
-  setTimeout(() => { if (grid.classList) grid.classList.remove('is-period-flash'); }, 620);
+  const cards = Array.from(document.querySelectorAll('.period-card'));
+  if (!cards.length) return;
+  cards.forEach(card => {
+    card.classList.remove('is-period-flash');
+    void card.offsetWidth;      // 强制回流，连续切换也能重新触发
+    card.classList.add('is-period-flash');
+  });
+  clearTimeout(flashStatsPeriod._timer);
+  flashStatsPeriod._timer = setTimeout(() => {
+    cards.forEach(card => card.classList.remove('is-period-flash'));
+  }, 620);
 }
 
 /** 「按月回顾」折叠：手机默认收起，大屏默认展开 */

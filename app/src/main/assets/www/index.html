@@ -205,35 +205,33 @@
 
         <div class="stats-grid">
           <!-- 周期概览：跟随上方的 7 / 30 天切换 -->
-          <div class="stats-period" id="statsPeriod">
-            <div class="stat-hero glass tap-card" id="statHero" data-detail="overview"></div>
+          <div class="stat-hero glass tap-card period-card" id="statHero" data-detail="overview"></div>
 
-            <section class="goal-card glass" id="goalCard"></section>
+          <section class="goal-card glass period-card" id="goalCard"></section>
 
-            <div class="chart-card glass tap-card" data-detail="daily">
-              <div class="card-head">
-                <div>
-                  <div class="micro-label" id="barsLabel">LAST 7 DAYS</div>
-                  <h2 class="card-title">每日投入时长</h2>
-                </div>
-                <div class="chart-legend"><i class="dot-accent"></i>小时</div>
+          <div class="chart-card glass tap-card period-card" data-detail="daily">
+            <div class="card-head">
+              <div>
+                <div class="micro-label" id="barsLabel">LAST 7 DAYS</div>
+                <h2 class="card-title">每日投入时长</h2>
               </div>
-              <div class="bars" id="bars"></div>
+              <div class="chart-legend"><i class="dot-accent"></i>小时</div>
             </div>
-
-            <div class="chart-card glass tap-card" data-detail="category">
-              <div class="card-head">
-                <div>
-                  <div class="micro-label">BY CATEGORY</div>
-                  <h2 class="card-title">分类分布</h2>
-                </div>
-                <div class="chart-legend" id="subjectTotal">--</div>
-              </div>
-              <div class="subject-list" id="subjectList"></div>
-            </div>
-
-            <div class="report-card glass" id="reportCard"></div>
+            <div class="bars" id="bars"></div>
           </div>
+
+          <div class="chart-card glass tap-card period-card" data-detail="category">
+            <div class="card-head">
+              <div>
+                <div class="micro-label">BY CATEGORY</div>
+                <h2 class="card-title">分类分布</h2>
+              </div>
+              <div class="chart-legend" id="subjectTotal">--</div>
+            </div>
+            <div class="subject-list" id="subjectList"></div>
+          </div>
+
+          <div class="report-card glass period-card" id="reportCard"></div>
 
           <!-- 按月回顾：与上方 7 / 30 天区间无关，独立成段；手机端可折叠以缩短页面 -->
           <div class="stats-section-label">

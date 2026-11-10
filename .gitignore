@@ -26,3 +26,6 @@ run/
 *.iml
 .vscode/
 .DS_Store
+
+# 本地截图验证产物
+.tmp-shots/
