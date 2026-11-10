@@ -1575,6 +1575,8 @@ function openEditor(t, mode, dateVals) {
     panel.querySelectorAll('.toggle-row .switch input').forEach(i => i.addEventListener('change', syncSwitch));
     $('#btnCancelEdit', panel).addEventListener('click', () => {
       haptic('light');
+      // 模板里连续增删时段：取消后回到模板列表，不要退出整个弹层
+      if (isTpl) { openTemplateSheet(); return; }
       closeSheet();
       if (isNewTask) openPlanSheet(targetDate);
     });
@@ -1604,6 +1606,13 @@ function openEditor(t, mode, dateVals) {
         toast(`${targetDate === todayKey() ? '今日' : '明日'}计划已更新`);
       }
       save(true);
+      // 模板里连续增删时段：保存后回到模板列表，方便接着添加下一个
+      if (isTpl) {
+        openTemplateSheet();
+        renderHome();
+        refreshStats();
+        return;
+      }
       closeSheet();
       renderHome();
       refreshStats();
