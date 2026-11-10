@@ -2929,6 +2929,43 @@ let statsRange = 7;
 /** 统计页不可见时不必重算：切到统计页时会整体重绘 */
 function refreshStats() { if (tabIndex === 2) renderStats(); }
 
+/**
+ * 7/30 天切换时给「周期段」一个短促的高亮，让人一眼看出变化的只是这一段，
+ * 下面的「按月回顾」不参与区间切换。
+ */
+function flashStatsPeriod() {
+  const grid = $('#statsPeriod');
+  if (!grid || !grid.classList) return;
+  grid.classList.remove('is-period-flash');
+  // 强制回流，保证连续切换也能重新触发动画
+  void grid.offsetWidth;
+  grid.classList.add('is-period-flash');
+  setTimeout(() => { if (grid.classList) grid.classList.remove('is-period-flash'); }, 620);
+}
+
+/** 「按月回顾」折叠：手机默认收起，大屏默认展开 */
+function bindMonthToggle() {
+  const toggle = $('#monthToggle');
+  const card = $('#calendarCard');
+  if (!toggle || !card) return;
+  if (toggle.dataset.bound === '1') return;
+  toggle.dataset.bound = '1';
+
+  const wide = () => globalThis.matchMedia && globalThis.matchMedia('(min-width: 760px)').matches;
+  const setOpen = open => {
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    card.classList.toggle('is-collapsed', !open);
+    if (open) renderCalendar();
+  };
+  setOpen(wide());
+  toggle.addEventListener('click', () => {
+    if (wide()) return;
+    haptic('light');
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    setOpen(open);
+  });
+}
+
 function buildExportFilename(date = new Date()) {
   return `chronos-${dateKey(date)}.json`;
 }
@@ -3050,6 +3087,7 @@ function renderStats() {
 
   renderGoalCard();
   renderCalendar();
+  bindMonthToggle();
 
   setTimeout(() => {
     $$('#bars .bar-fill').forEach(b => { b.style.height = b.dataset.h + '%'; });
@@ -3713,6 +3751,7 @@ function boot() {
       $$('#rangeSeg button').forEach(x => x.classList.toggle('on', x === b));
       haptic('light');
       moveGlider($('#rangeSeg'), $('#rangeGlider'), b);
+      flashStatsPeriod();
       renderStats();
     });
   });

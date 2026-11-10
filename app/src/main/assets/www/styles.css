@@ -513,7 +513,7 @@ body:not(.motion) .pages { transition: none; }
 
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .card-title { margin: 3px 0 0; font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
-.chart-card { padding: 20px; }
+.chart-card { padding: var(--pad-card); }
 .chart-legend { font-size: 12px; font-weight: 600; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
 .dot-accent { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
 
@@ -546,7 +546,47 @@ body:not(.motion) .pages { transition: none; }
 /* ============ 统计页 ============ */
 .stats-grid { max-width: var(--maxw); margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 
-/* 分组标题：把「按周期」与「按月」两块在视觉上明确切开 */
+/* 周期段：内部卡片纵向堆叠（手机），栅格只在外层 stats-grid 打开 */
+.stats-period { display: flex; flex-direction: column; gap: 16px; }
+
+/* 7/30 天切换时，只给周期段一个短促的呼吸高亮 */
+.stats-period.is-period-flash > * {
+  animation: statsPeriodFlash .58s var(--ease);
+}
+@keyframes statsPeriodFlash {
+  0% { opacity: .45; transform: translateY(3px); }
+  100% { opacity: 1; transform: none; }
+}
+body:not(.motion) .stats-period.is-period-flash > * { animation: none; }
+
+/* 按月回顾：可折叠头 + 折叠后的日历 */
+.stats-month-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  margin-top: 2px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.stats-month-toggle-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stats-month-toggle .card-title { display: block; }
+.stats-month-chevron {
+  flex: none;
+  width: 20px; height: 20px;
+  color: var(--ink-3);
+  transition: transform .28s var(--ease);
+}
+.stats-month-toggle[aria-expanded="true"] .stats-month-chevron { transform: rotate(180deg); }
+.calendar-card.is-collapsed { display: none; }
+body:not(.motion) .stats-month-chevron { transition: none; }
 .stats-section-label {
   display: flex;
   flex-direction: column;
@@ -557,14 +597,24 @@ body:not(.motion) .pages { transition: none; }
 }
 .stats-section-label .card-title { margin: 0; }
 .stats-section-note { margin: 2px 0 0; font-size: 12px; line-height: 1.6; color: var(--ink-3); }
+
+/* 概览：统计页的唯一视觉重心，数字要比其他卡片显著更大 */
 .stat-hero { display: grid; grid-template-columns: 1fr 1fr; padding: 0; overflow: hidden; }
-.stat-block { padding: 18px 20px; border-bottom: 1px solid var(--hairline); }
-.stat-block:nth-child(odd) { border-right: 1px solid var(--hairline); }
-.stat-block:nth-last-child(-n+2) { border-bottom: none; }
-.stat-block .k { font-size: 12px; font-weight: 600; color: var(--ink-3); }
-.stat-block .v { font-size: 32px; font-weight: 800; margin-top: 6px; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-.stat-block .v small { font-size: 13px; font-weight: 500; color: var(--ink-3); margin-left: 2px; }
-.stat-block .s { font-size: 12px; color: var(--ink-3); margin-top: 5px; }
+.stat-hero .stat-block { padding: 22px 20px 20px; border-bottom: 1px solid var(--hairline); }
+.stat-hero .stat-block:nth-child(odd) { border-right: 1px solid var(--hairline); }
+.stat-hero .stat-block:nth-last-child(-n+2) { border-bottom: none; }
+.stat-hero .stat-block .k { font-size: 12px; font-weight: 600; color: var(--ink-3); letter-spacing: .01em; }
+.stat-hero .stat-block .v {
+  font-size: 40px;
+  font-weight: 800;
+  margin-top: 8px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.025em;
+}
+.stat-hero .stat-block:first-child .v { color: var(--accent); }
+.stat-hero .stat-block .v small { font-size: 14px; font-weight: 600; color: var(--ink-3); margin-left: 3px; letter-spacing: 0; }
+.stat-hero .stat-block .s { font-size: 12px; color: var(--ink-3); margin-top: 7px; }
 
 .subject-list { display: flex; flex-direction: column; }
 .subject-row {
@@ -610,7 +660,7 @@ body:not(.motion) .pages { transition: none; }
 .report-row:first-child { border-top: none; padding-top: 0; }
 .report-row span { color: var(--ink-3); }
 .report-row b { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-.report-card { padding: 20px; }
+.report-card { padding: var(--pad-card); }
 
 /* ============ 设置页 ============ */
 .settings-grid { max-width: var(--maxw); margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
@@ -1074,7 +1124,16 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
   .home-grid:has(> .exam-banner[hidden]) { grid-template-areas: "main side"; }
   .focus-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 20px; align-items: start; }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  .calendar-card, .stat-hero, .goal-card, .stats-grid [data-detail="daily"], .stats-grid [data-detail="category"], .report-card, .stats-section-label { grid-column: span 2; }
+  .stats-period {
+    grid-column: span 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  .calendar-card, .stat-hero, .goal-card, .stats-period [data-detail="daily"], .stats-period [data-detail="category"], .report-card, .stats-section-label { grid-column: span 2; }
+  /* 平板/大屏空间充足：与 JS 的 760px 阈值保持一致，日历直接展开 */
+  .calendar-card.is-collapsed { display: block; }
+  .stats-month-toggle { cursor: default; }
   .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
   .tabbar {
     left: 50%; right: auto; bottom: calc(var(--sab) + 22px);
@@ -1103,8 +1162,9 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 @media (min-width: 900px) {
   .scroll { padding-left: 44px; padding-right: 44px; }
   .stats-grid { grid-template-columns: repeat(6, 1fr); }
+  .stats-period { grid-template-columns: repeat(6, 1fr); }
   .calendar-card, .stat-hero, .stats-section-label { grid-column: span 6; }
-  .goal-card, .stats-grid [data-detail="daily"], .stats-grid [data-detail="category"], .report-card { grid-column: span 3; }
+  .goal-card, .stats-period [data-detail="daily"], .stats-period [data-detail="category"], .report-card { grid-column: span 3; }
   .sheet-panel { width: 640px; }
 }
 
