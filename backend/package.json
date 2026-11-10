@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test --test-isolation=none test/*.test.js",
-    "test:frontend": "cd .. && node tests/test-logic.js && node tests/template-editor.test.js && node --test --test-isolation=none tests/cloud-sync.test.js",
+    "test:frontend": "cd .. && node tests/test-logic.js && node tests/template-editor.test.js && node tests/stats-layout.test.js && node --test --test-isolation=none tests/cloud-sync.test.js",
     "test:all": "npm test && npm run test:frontend",
     "dev": "wrangler dev",
     "db:migrate:local": "wrangler d1 migrations apply chronos-db --local",

@@ -204,8 +204,7 @@
         </header>
 
         <div class="stats-grid">
-          <div class="chart-card glass calendar-card" id="calendarCard"></div>
-
+          <!-- 周期概览：跟随上方的 7 / 30 天切换 -->
           <div class="stat-hero glass tap-card" id="statHero" data-detail="overview"></div>
 
           <section class="goal-card glass" id="goalCard"></section>
@@ -233,6 +232,15 @@
           </div>
 
           <div class="report-card glass" id="reportCard"></div>
+
+          <!-- 按月回顾：与上方 7 / 30 天区间无关，独立成段 -->
+          <div class="stats-section-label">
+            <span class="micro-label">BY MONTH</span>
+            <h2 class="card-title">按月回顾</h2>
+            <p class="stats-section-note">下面这张日历按自然月展示打卡与投入，可翻月查看，不受上方「近 7 / 30 天」影响。</p>
+          </div>
+
+          <div class="chart-card glass calendar-card" id="calendarCard"></div>
         </div>
       </div>
     </section>
