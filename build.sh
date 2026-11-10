@@ -50,7 +50,9 @@ find "$SRC/java" "$OUT/gen" -name '*.java' > "$OUT/sources.txt"
 # MSYS/Cygwin find emits /d/... paths, while Windows javac expects D:\\....
 if command -v cygpath >/dev/null 2>&1; then
   while IFS= read -r source; do cygpath -w "$source"; done < "$OUT/sources.txt" > "$OUT/sources-win.txt"
-  SOURCE_LIST="$OUT/sources-win.txt"
+  # MSYS won't auto-convert an @argfile argument; Windows javac would read
+  # @/d/... as \d\... . Use a mixed D:/... path that both sides understand.
+  SOURCE_LIST="$(cygpath -m "$OUT/sources-win.txt")"
 else
   SOURCE_LIST="$OUT/sources.txt"
 fi
@@ -66,7 +68,7 @@ echo "==> dex"
 find "$OUT/classes" -name '*.class' > "$OUT/classes.txt"
 if command -v cygpath >/dev/null 2>&1; then
   while IFS= read -r class_file; do cygpath -w "$class_file"; done < "$OUT/classes.txt" > "$OUT/classes-win.txt"
-  CLASS_LIST="$OUT/classes-win.txt"
+  CLASS_LIST="$(cygpath -m "$OUT/classes-win.txt")"
 else
   CLASS_LIST="$OUT/classes.txt"
 fi

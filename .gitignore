@@ -16,6 +16,11 @@ keystore.jks
 *.keystore
 keystore.properties
 
+# Agent/runtime output
+.omc/
+evidence-pool/
+run/
+
 # IDE
 .idea/
 *.iml

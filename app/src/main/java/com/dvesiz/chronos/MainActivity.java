@@ -511,59 +511,6 @@ public class MainActivity extends Activity {
             FocusGuardService.stop(MainActivity.this);
         }
 
-        /* ---------------- 邮箱验证码（Resend 就绪） ---------------- */
-
-        /**
-         * 发送邮箱验证码。
-         * RESEND_API_KEY 为空时返回 "dev"（本地开发模式，验证码由前端直接展示）；
-         * 配置后走 Resend API，返回 "sent"。
-         */
-        @JavascriptInterface
-        public String sendEmailCode(String email, String code) {
-            if (RESEND_API_KEY == null || RESEND_API_KEY.isEmpty()) return "dev";
-            final String mail = email == null ? "" : email;
-            final String cd = code == null ? "" : code;
-            new Thread(() -> sendViaResend(mail, cd)).start();
-            return "sent";
-        }
-    }
-
-    /** Resend 配置：拿到 key 后填这里即可，前端无需改动 */
-    private static final String RESEND_API_KEY = "";
-    private static final String RESEND_FROM = "Chronos <onboarding@resend.dev>";
-
-    private void sendViaResend(String email, String code) {
-        java.net.HttpURLConnection conn = null;
-        try {
-            org.json.JSONObject payload = new org.json.JSONObject();
-            payload.put("from", RESEND_FROM);
-            payload.put("to", new org.json.JSONArray().put(email));
-            payload.put("subject", "时序 Chronos · 登录验证码");
-            payload.put("html", "<div style=\"font-family:-apple-system,sans-serif;padding:28px\">"
-                    + "<h2 style=\"margin:0 0 12px\">你的验证码</h2>"
-                    + "<div style=\"font-size:34px;font-weight:700;letter-spacing:8px;color:#ff5a1f\">"
-                    + android.text.TextUtils.htmlEncode(code)
-                    + "</div>"
-                    + "<p style=\"color:#888\">10 分钟内有效。若非本人操作，请忽略此邮件。</p></div>");
-            conn = (java.net.HttpURLConnection) new java.net.URL("https://api.resend.com/emails")
-                    .openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Authorization", "Bearer " + RESEND_API_KEY);
-            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
-            java.io.OutputStream os = conn.getOutputStream();
-            os.write(payload.toString().getBytes("utf-8"));
-            os.flush();
-            os.close();
-            int status = conn.getResponseCode();
-            android.util.Log.d("Chronos", "resend status=" + status);
-        } catch (Exception e) {
-            android.util.Log.d("Chronos", "resend failed: " + e);
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
     }
 
     @Override

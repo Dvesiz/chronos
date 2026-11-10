@@ -29,7 +29,7 @@ The local API is normally at `http://localhost:8787`.
 
 ## Production deployment
 
-The current deployment uses the existing Resend key from `相关配置.txt` because the owner explicitly requested it. Keep it only in the Worker Secret; never commit or print it. Other credentials from that file (MySQL password, Redis password, S3 access/secret key, and Turnstile secret) are unrelated to this Worker and must not be copied into it.
+Production credentials must be newly rotated values stored only as Worker Secrets. Never commit or print them. Credentials for unrelated services must not be copied into this Worker.
 
 1. Authenticate Wrangler with the Cloudflare account that owns the Worker and D1 database.
 2. Create the database:
@@ -77,4 +77,4 @@ npm run deploy
 - `POST /v1/feedback`: submit feedback.
 - `GET /v1/app/latest`: read the latest release record.
 
-The client remains local-first. If the API base is empty or the network is unavailable, the existing local data and JSON import/export continue to work.
+The client remains local-first. If the API base is empty or the network is unavailable, the existing local data and JSON import/export continue to work. From the repository root, run `cd backend && npm run test:all` to execute the backend and frontend regression suites together.

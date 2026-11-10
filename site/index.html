@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>时序 · Chronos — 让每一段时间，都有明确的方向</title>
-<meta name="description" content="时序 Chronos 是一款为学习与长期规划打造的 Android 时间管理应用：模板化计划、番茄与沉浸专注、每日复盘与数据统计。纯单机运行，无账号、无云同步，安装包约 110 KB。">
+<meta name="description" content="时序 Chronos 是一款为学习与长期规划打造的 Android 时间管理应用：模板化计划、番茄与沉浸专注、每日复盘、数据统计与可选的多设备同步，安装包约 110 KB。">
 <meta name="theme-color" content="#f2f2f4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f0f12" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="时序 · Chronos">
@@ -61,7 +61,7 @@
       <div class="hero__copy">
         <p class="eyebrow" data-reveal>
           <span class="eyebrow__dot"></span>
-          ANDROID · 纯单机 · 零第三方依赖
+          ANDROID · 本地优先 · 零第三方依赖
         </p>
 
         <h1 class="hero__title" data-reveal style="--delay:60ms">
@@ -89,8 +89,8 @@
 
         <ul class="hero__meta" data-reveal style="--delay:240ms">
           <li>Android 8.0+</li>
-          <li>无账号 · 无云同步</li>
-          <li>数据只存在本机</li>
+          <li>本地优先 · 可选云同步</li>
+          <li>不登录也能完整使用</li>
         </ul>
       </div>
 
@@ -139,7 +139,7 @@
       <div class="spec" data-reveal style="--delay:120ms">
         <b class="spec__num" data-count="0">0</b>
         <span class="spec__unit">次</span>
-        <p class="spec__label">联网请求<br>飞行模式照常用</p>
+        <p class="spec__label">强制联网<br>飞行模式照常用</p>
       </div>
       <div class="spec" data-reveal style="--delay:180ms">
         <b class="spec__num" data-count="2">0</b>
@@ -342,22 +342,22 @@
       <header class="section__head">
         <p class="eyebrow" data-reveal><span class="eyebrow__dot"></span>YOUR DATA</p>
         <h2 class="section__title" data-reveal style="--delay:60ms">
-          没有服务器，<br>所以也没有「上传」。
+          默认只在本机，<br>同步由你决定。
         </h2>
       </header>
 
       <div class="privacy__grid">
         <div class="privacy__col" data-reveal>
-          <h3>纯单机</h3>
-          <p>没有账号体系、没有云同步、没有埋点。飞行模式下，计划、计时、统计照常工作。</p>
+          <h3>本地优先</h3>
+          <p>不登录、不联网也能完整使用：计划、计时、统计全部留在本机，没有埋点。登录后才会启用可选的多设备同步。</p>
         </div>
         <div class="privacy__col" data-reveal style="--delay:80ms">
           <h3>双保险持久化</h3>
           <p>数据写在 <code>localStorage</code>，同时同步一份到系统 <code>SharedPreferences</code>。WebView 存储被清掉也能恢复。</p>
         </div>
         <div class="privacy__col" data-reveal style="--delay:160ms">
-          <h3>带走很简单</h3>
-          <p>「导出学习数据」得到一个 JSON 文件；换机后在设置里导入即可。卸载会清空本机数据，记得先导出。</p>
+          <h3>同步与备份</h3>
+          <p>登录后可在多台设备间自动同步；也可以随时「导出学习数据」得到一个 JSON 文件，换机后在设置里导入。卸载会清空本机数据。</p>
         </div>
       </div>
     </div>
@@ -372,7 +372,7 @@
           <h2 class="try__title">先试后装，也行。</h2>
           <p class="try__text">
             浏览器版复用同一套界面与逻辑，计划、专注、番茄钟、统计、打卡、导入导出都能跑。
-            数据存在你自己的浏览器里；系统通知、精确闹钟、悬浮窗与极度沉浸，需要安装 APK 才能用。
+            数据默认存在你自己的浏览器里，登录后也可与安卓端同步；系统通知、精确闹钟、悬浮窗与极度沉浸，需要安装 APK 才能用。
           </p>
           <div class="try__actions">
             <a class="btn btn--primary btn--lg" href="https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.0.apk">
@@ -411,16 +411,16 @@
 
       <div class="faq__list">
         <details data-reveal>
-          <summary>真的完全不联网吗？</summary>
-          <p>核心功能不依赖网络，计划、计时和统计数据全部留在本机。应用声明了网络权限，用于本地账户的验证码邮件能力；当前发布版本未配置服务端密钥，不会主动发送请求。</p>
+          <summary>不联网能用吗？</summary>
+          <p>能。核心功能不依赖网络：计划、计时和统计数据全部留在本机，飞行模式下照常工作。只有你主动登录时，才会连接云端账号服务，用于邮箱验证码登录与多设备同步。</p>
         </details>
         <details data-reveal style="--delay:60ms">
           <summary>换手机了，数据怎么办？</summary>
-          <p>先在旧设备「导出学习数据」，得到一个 JSON 文件；在新设备安装后进入设置，用「导入学习数据」恢复。没有云同步，所以这一步需要你手动完成。</p>
+          <p>两种方式：登录同一账号后自动同步，新设备登录即可拿到云端数据；或者沿用以前的离线方式——在旧设备「导出学习数据」，新设备进入设置「导入学习数据」恢复。</p>
         </details>
         <details data-reveal style="--delay:120ms">
-          <summary>为什么不做云同步？</summary>
-          <p>云同步意味着服务器、账号和隐私边界。这个应用的定位是本地工具，宁可让你手动导出一次，也不想把学习记录放到别人的机器上。</p>
+          <summary>云同步会把我的数据怎么样？</summary>
+          <p>同步是可选的，不登录就不会上传任何内容。登录后，数据通过邮箱验证码账号存到你自己的云端空间，只在你自己的设备之间同步；API 密钥只放在服务端，不进入 APK。你随时可以退出登录或删除账号与云端数据。</p>
         </details>
         <details data-reveal style="--delay:180ms">
           <summary>安装包这么小，功能会缩水吗？</summary>

@@ -2321,10 +2321,7 @@ async function requestCodeFor(email) {
   const store = readJson(CODES_KEY, {});
   store[email] = { code, exp: Date.now() + 10 * 60 * 1000 };
   writeJson(CODES_KEY, store);
-  const n = N();
-  let mode = 'dev';
-  try { if (n && n.sendEmailCode) mode = n.sendEmailCode(email, code) || 'dev'; } catch (e) { mode = 'dev'; }
-  return { code, mode };
+  return { code, mode: 'dev' };
 }
 function verifyCodeFor(email, code) {
   const store = readJson(CODES_KEY, {});

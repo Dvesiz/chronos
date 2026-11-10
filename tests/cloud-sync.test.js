@@ -11,7 +11,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-function createHarness(fetchImpl) {
+function createHarness(fetchImpl, { session = true } = {}) {
   const values = new Map();
   const intervals = [];
   const listeners = {};
@@ -20,7 +20,7 @@ function createHarness(fetchImpl) {
     setItem: (key, value) => values.set(key, String(value)),
     removeItem: key => values.delete(key)
   };
-  values.set('chronos.cloud.session.v1', JSON.stringify({ accessToken: 'access', refreshToken: 'refresh' }));
+  if (session) values.set('chronos.cloud.session.v1', JSON.stringify({ accessToken: 'access', refreshToken: 'refresh' }));
   const document = { hidden: false, addEventListener: (name, callback) => { listeners[`document:${name}`] = callback; } };
   const window = {
     CHRONOS_API_BASE: 'https://api.example',
@@ -42,6 +42,55 @@ function response(data, status = 200) {
 }
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('starts continuous polling after login during the current app session', async () => {
+  let current = { value: 0 };
+  let remote = { value: 0 };
+  let remoteSeq = 0;
+  let verifyCalls = 0;
+  const harness = createHarness(async (url, options = {}) => {
+    const path = String(url);
+    if (path.includes('/v1/auth/verify')) {
+      verifyCalls++;
+      return response({ accessToken: 'access', refreshToken: 'refresh', user: { email: 'user@example.com' } });
+    }
+    if (path.includes('/v1/sync/snapshot')) return response({ state: remote, headSeq: remoteSeq });
+    if (path.includes('/v1/sync/events')) {
+      const events = JSON.parse(options.body || '{}').events || [];
+      return response({ accepted: events.map(event => ({ eventId: event.eventId })), headSeq: remoteSeq, state: remote });
+    }
+    if (path.includes('/v1/sync/head')) return response({ headSeq: remoteSeq });
+    throw new Error(`unexpected request ${url}`);
+  }, { session: false });
+  harness.api.init({ get: () => current, apply: state => { current = state; } });
+  assert.equal(harness.intervals.length, 0, 'no polling should run before login');
+
+  await harness.api.verify('user@example.com', '123456');
+  assert.equal(verifyCalls, 1);
+  const poll = harness.intervals.find(timer => timer.ms <= 10000);
+  assert.ok(poll, 'login should start periodic sync polling');
+
+  remote = { value: 1 };
+  remoteSeq = 1;
+  poll.callback();
+  await tick();
+  assert.deepEqual(JSON.parse(JSON.stringify(current)), { value: 1 });
+});
+
+test('applies timeout protection to token refresh and retried requests', async () => {
+  const signals = [];
+  let calls = 0;
+  const harness = createHarness(async (url, options = {}) => {
+    signals.push(options.signal);
+    calls++;
+    if (calls === 1) return response({ error: 'unauthorized' }, 401);
+    if (calls === 2) return response({ accessToken: 'next-access', refreshToken: 'next-refresh' });
+    return response({ release: null });
+  });
+  await harness.api.latest();
+  assert.equal(calls, 3);
+  assert.ok(signals.every(Boolean), 'initial, refresh, and retry requests need abort signals');
+});
 
 test('polls snapshots and applies changes made by another device', async () => {
   let remote = { value: 1 };

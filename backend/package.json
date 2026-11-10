@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test --test-isolation=none test/*.test.js",
+    "test:frontend": "cd .. && node tests/test-logic.js && node --test --test-isolation=none tests/cloud-sync.test.js",
+    "test:all": "npm test && npm run test:frontend",
     "dev": "wrangler dev",
     "db:migrate:local": "wrangler d1 migrations apply chronos-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply chronos-db --remote",

@@ -58,19 +58,13 @@
   }
   function diff(before, after) { return cloneOps(before || {}, after || {}, [], []); }
 
-  async function request(path, options) {
-    if (!API_BASE) throw new Error('cloud_disabled');
-    var opts = options || {};
-    var session = read(SESSION_KEY, null);
-    var headers = Object.assign({ 'content-type': 'application/json' }, opts.headers || {});
-    if (session && session.accessToken) headers.authorization = 'Bearer ' + session.accessToken;
-    var controller = global.AbortController ? new AbortController() : null;
+  async function fetchWithTimeout(url, options) {
+    var controller = global.AbortController ? new global.AbortController() : null;
     var timer = controller ? setTimeout(function () { controller.abort(); }, 15000) : null;
-    var requestOpts = Object.assign({}, opts, { headers: headers });
+    var requestOpts = Object.assign({}, options || {});
     if (controller) requestOpts.signal = controller.signal;
-    var response;
     try {
-      response = await fetch(API_BASE + path, requestOpts);
+      return await fetch(url, requestOpts);
     } catch (e) {
       var networkError = new Error(e && e.name === 'AbortError' ? 'cloud_timeout' : 'cloud_network');
       networkError.code = networkError.message;
@@ -78,8 +72,18 @@
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+
+  async function request(path, options) {
+    if (!API_BASE) throw new Error('cloud_disabled');
+    var opts = options || {};
+    var session = read(SESSION_KEY, null);
+    var headers = Object.assign({ 'content-type': 'application/json' }, opts.headers || {});
+    if (session && session.accessToken) headers.authorization = 'Bearer ' + session.accessToken;
+    var requestOpts = Object.assign({}, opts, { headers: headers });
+    var response = await fetchWithTimeout(API_BASE + path, requestOpts);
     if (response.status === 401 && session && session.refreshToken && path !== '/v1/auth/refresh') {
-      var refreshed = await fetch(API_BASE + '/v1/auth/refresh', {
+      var refreshed = await fetchWithTimeout(API_BASE + '/v1/auth/refresh', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ refreshToken: session.refreshToken })
       });
@@ -87,7 +91,7 @@
         var next = await refreshed.json();
         write(SESSION_KEY, next);
         headers.authorization = 'Bearer ' + next.accessToken;
-        response = await fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }));
+        response = await fetchWithTimeout(API_BASE + path, Object.assign({}, opts, { headers: headers }));
       }
     }
     var payload = null;
@@ -172,10 +176,15 @@
     });
     return root;
   }
+  function startPolling() {
+    if (!state.pollTimer) state.pollTimer = global.setInterval(pullLatest, 5000);
+  }
+
   async function loginReady(auth, localState) {
     if (!API_BASE || !auth) return;
     write(SESSION_KEY, auth);
     state.loggedIn = true;
+    startPolling();
     state.queuedState = clone(localState);
     var remote = await request('/v1/sync/snapshot');
     var hasRemote = Number(remote.headSeq || 0) > 0;
@@ -217,6 +226,10 @@
       try { if (read(SESSION_KEY, null)) await request('/v1/auth/logout', { method: 'POST', body: '{}' }); } catch (e) {}
       localStorage.removeItem(SESSION_KEY);
       state.loggedIn = false;
+      if (state.pollTimer) {
+        global.clearInterval(state.pollTimer);
+        state.pollTimer = null;
+      }
       state.queue = [];
       persistQueue();
     },
@@ -253,7 +266,7 @@
           }
           flush();
         }).catch(function () { flush(); });
-        state.pollTimer = global.setInterval(pullLatest, 5000);
+        startPolling();
       }
     },
     isSyncing: function () { return state.syncing || state.pulling; },

@@ -23,6 +23,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Run regression tests
+        working-directory: backend
+        run: |
+          npm ci
+          npm run test:all
       - name: Prepare static site
         run: |
           rm -rf _site
