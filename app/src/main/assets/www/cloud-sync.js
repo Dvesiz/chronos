@@ -234,7 +234,7 @@
       persistQueue();
     },
     updateProfile: async function (profile) { return request('/v1/account/profile', { method: 'PATCH', body: JSON.stringify(profile) }); },
-    feedback: async function (body) { return request('/v1/feedback', { method: 'POST', body: JSON.stringify({ body: body, appVersion: '2.7.0' }) }); },
+    feedback: async function (body) { return request('/v1/feedback', { method: 'POST', body: JSON.stringify({ body: body, appVersion: '2.7.1' }) }); },
     latest: async function () { return request('/v1/app/latest'); },
     queueState: function (nextState) {
       if (!API_BASE || !state.loggedIn || !state.booted) return;

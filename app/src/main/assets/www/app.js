@@ -136,6 +136,7 @@ function normalizeState(s) {
   // 番茄钟
   s.pomo = s.pomo || {};
   const p = s.pomo;
+  if (p.mode !== 'up') p.mode = 'down';   // 计时方向：down 倒计时 / up 正计时
   if (typeof p.preset !== 'number') p.preset = 25;
   if (typeof p.auto !== 'boolean') p.auto = false;
   if (typeof p.sound !== 'boolean') p.sound = true;
@@ -1811,18 +1812,46 @@ const POMO_FOCUS = { 25: 1500, 50: 3000, 15: 900 };
 const POMO_BREAK = { 25: 300, 50: 600, 15: 180 };
 const POMO_C = 2 * Math.PI * 86;
 
+/**
+ * 番茄钟两种计时方向：
+ *  - 'down' 经典倒计时（25/5），到点自动结束并进入休息
+ *  - 'up'   正向计时，从 0 开始累加、不限时长，由用户手动结束
+ * mode 存在 state.pomo 里并随云同步下发；缺省按倒计时处理。
+ */
+const POMO_MODE_DOWN = 'down';
+const POMO_MODE_UP = 'up';
+
 const mmss = s => {
   const v = Math.max(0, Math.floor(s));
   return `${pad(Math.floor(v / 60))}:${pad(v % 60)}`;
 };
 
+function pomoMode() { return state.pomo.mode === POMO_MODE_UP ? POMO_MODE_UP : POMO_MODE_DOWN; }
+function pomoIsCountUp() { return pomoMode() === POMO_MODE_UP; }
+
 function pomoTotal() {
+  if (pomoIsCountUp()) return 0;          // 正向计时没有上限
   const p = state.pomo;
   const map = p.phase === 'break' ? POMO_BREAK : POMO_FOCUS;
   return map[p.preset] || (p.phase === 'break' ? 300 : 1500);
 }
+
+/** 已计时长（秒）：两种模式统一口径 */
+function pomoElapsed() {
+  const p = state.pomo;
+  if (pomoIsCountUp()) {
+    const base = Math.max(0, p.remain || 0);
+    if (p.running && p.startAt) return base + Math.max(0, (Date.now() - p.startAt) / 1000);
+    return base;
+  }
+  const total = pomoTotal();
+  return Math.max(0, total - pomoRemain());
+}
+
 function pomoRemain() {
   const p = state.pomo;
+  // 正向模式没有「剩余」概念；返回累计值保持旧调用点不炸
+  if (pomoIsCountUp()) return Math.max(0, p.remain || 0);
   if (p.running && p.endAt) return Math.max(0, (p.endAt - Date.now()) / 1000);
   return Math.max(0, p.remain);
 }
@@ -1851,11 +1880,19 @@ function pomoLinkedTask() {
 function pomoStart() {
   const p = state.pomo;
   const total = pomoTotal();
-  if (p.remain <= .5 || p.remain > total) p.remain = total;
   p.running = true;
-  p.endAt = Date.now() + p.remain * 1000;
-  p.startAt = Date.now() - (total - p.remain) * 1000;
-  p.sessionStartAt = p.sessionStartAt || p.startAt;
+  if (pomoIsCountUp()) {
+    // 正向计时：不为 endAt 设上限，只记录“这一段从什么时候继续”
+    p.remain = Math.max(0, p.remain || 0);
+    p.startAt = Date.now();
+    p.endAt = null;
+    p.sessionStartAt = p.sessionStartAt || (Date.now() - p.remain * 1000);
+  } else {
+    if (p.remain <= .5 || p.remain > total) p.remain = total;
+    p.endAt = Date.now() + p.remain * 1000;
+    p.startAt = Date.now() - (total - p.remain) * 1000;
+    p.sessionStartAt = p.sessionStartAt || p.startAt;
+  }
   if (p.phase === 'focus') {
     const t = pomoLinkedTask();
     // 同一任务不要同时跑两种计时，避免时长被重复计入
@@ -1876,10 +1913,15 @@ function pomoStart() {
 
 function pomoPause() {
   const p = state.pomo;
-  p.remain = pomoRemain();
+  if (pomoIsCountUp()) {
+    p.remain = pomoElapsed();     // 把已计时长固化下来
+    p.startAt = null;
+  } else {
+    p.remain = pomoRemain();
+    p.endAt = null;
+    p.startAt = null;
+  }
   p.running = false;
-  p.endAt = null;
-  p.startAt = null;
   save();
   haptic('light');
   syncGuard();
@@ -1887,11 +1929,32 @@ function pomoPause() {
   if (immerseOpen) renderImmerse();
 }
 
+/** 切换计时方向：正计时 / 倒计时 */
+function setPomoMode(mode) {
+  const next = mode === POMO_MODE_UP ? POMO_MODE_UP : POMO_MODE_DOWN;
+  const p = state.pomo;
+  if (p.running) {
+    toast('先结束当前这一段，再切换计时方式');
+    return;
+  }
+  p.mode = next;
+  p.phase = 'focus';
+  p.remain = next === POMO_MODE_UP ? 0 : (POMO_FOCUS[p.preset] || 1500);
+  p.endAt = null;
+  p.startAt = null;
+  p.sessionStartAt = null;
+  p.taskId = null;
+  p.taskTitle = '';
+  save();
+  renderFocus();
+}
+
 function finishPomoEarly() {
   const p = state.pomo;
   const wasBreak = p.phase === 'break';
-  const total = pomoTotal();
-  const elapsed = Math.max(0, Math.min(total, total - pomoRemain()));
+  const elapsed = pomoIsCountUp()
+    ? Math.max(0, pomoElapsed())
+    : Math.max(0, Math.min(pomoTotal(), pomoTotal() - pomoRemain()));
   if (!wasBreak && elapsed > 0) {
     const rec = pomoStartRec();
     const t = rec && p.taskId ? rec.tasks.find(x => x.id === p.taskId) : null;
@@ -1901,7 +1964,7 @@ function finishPomoEarly() {
       t.modified = true;
     } else {
       const day = rec && (rec.partialFocus || (rec.partialFocus = []));
-      if (day) day.push({ start: p.startAt || Date.now() - elapsed * 1000, end: Date.now(), seconds: elapsed, title: p.taskTitle || '自由专注' });
+      if (day) day.push({ start: p.sessionStartAt || p.startAt || Date.now() - elapsed * 1000, end: Date.now(), seconds: elapsed, title: p.taskTitle || '自由专注' });
     }
   }
   p.running = false;
@@ -1909,7 +1972,7 @@ function finishPomoEarly() {
   p.startAt = null;
   p.sessionStartAt = null;
   p.phase = 'focus';
-  p.remain = POMO_FOCUS[p.preset] || 1500;
+  p.remain = pomoIsCountUp() ? 0 : (POMO_FOCUS[p.preset] || 1500);
   p.taskId = null;
   p.taskTitle = '';
   save(true);
@@ -1940,6 +2003,8 @@ function pomoReset() {
 
 function pomoSkip() {
   const p = state.pomo;
+  // 正计时没有「下一阶段」概念：跳过 = 结束这一段并计入今日
+  if (pomoIsCountUp()) { finishPomoEarly(); return; }
   p.running = false;
   p.endAt = null;
   p.startAt = null;
@@ -2093,25 +2158,55 @@ function immerseLine(phase, remain, total) {
   return list[Math.floor(elapsed / 45) % list.length];   // 每 45 秒换一句，不打断阅读
 }
 
+/** 番茄页右侧统计区（切页/计时中都会重绘，单独抽出） */
+function renderPomoSide() {
+  const list = pomoTodayList();
+  $('#pomoSummary').innerHTML = `
+    <div class="ps"><i>TODAY</i><b>${list.length}<small>个</small></b></div>
+    <div class="ps"><i>FOCUS</i><b>${pomoTodayMinutes()}<small>分</small></b></div>
+    <div class="ps"><i>7 DAYS</i><b>${pomoWeekCount()}<small>个</small></b></div>`;
+
+  $('#pomoTodayLegend').textContent = `${list.length} 个`;
+  const recent = list.slice(-8).reverse();
+  $('#pomoLog').innerHTML = recent.length ? recent.map(s => {
+    const d = new Date(s.start);
+    return `<div class="pomo-log-row">
+      <span class="t">${pad(d.getHours())}:${pad(d.getMinutes())}</span>
+      <span class="n">${esc(s.title || '自由专注')}</span>
+      <span class="m">${s.minutes}′</span>
+    </div>`;
+  }).join('') : '<div class="empty-state">今天还没有番茄。<br>点上面的按钮，开始第一段。</div>';
+
+  const keys = lastDays(7);
+  const counts = keys.map(k => (state.pomo.sessions[k] || []).length);
+  renderPomoBars($('#pomoWeekBars'), keys, counts);
+}
+
 function renderImmerse() {
   const el = $('#immerse');
   if (!el) return;
   const p = state.pomo;
-  const isBreak = p.phase === 'break';
-  const remain = pomoRemain();
+  const up = pomoIsCountUp();
+  const isBreak = p.phase === 'break' && !up;
+  const remain = up ? (p.running ? pomoElapsed() : Math.max(0, p.remain || 0)) : pomoRemain();
   const total = pomoTotal();
 
-  $('#imEyebrow').textContent = isBreak ? 'BREAK · 休息' : 'FOCUS · 专注';
+  $('#imEyebrow').textContent = isBreak ? 'BREAK · 休息' : (up ? 'COUNT UP · 正计时' : 'FOCUS · 专注');
   $('#imTime').textContent = mmss(remain);
-  $('#imLine').textContent = immerseLine(p.phase, remain, total);
+  $('#imLine').textContent = up
+    ? immerseLine('focus', 0, Math.max(1, Math.floor(remain / 45) * 45 + 1))
+    : immerseLine(p.phase, remain, total);
   $('#imPause').textContent = p.running
     ? (isBreak ? '暂停休息' : '暂停')
     : (isBreak ? '继续休息' : '继续');
   const linked = isBreak ? null : pomoLinkedTask();
   $('#imTask').textContent = isBreak
     ? (p.round ? `已完成 ${p.round} 个番茄` : '休息一下，再回来')
-    : (linked ? linked.title : '自由专注 · 不绑定具体任务');
-  $('#imBar').style.width = (100 - clamp(remain / total, 0, 1) * 100).toFixed(2) + '%';
+    : (linked ? linked.title : (up ? '正计时 · 不限时长，随时结束' : '自由专注 · 不绑定具体任务'));
+  const cycle = POMO_FOCUS[p.preset] || 1500;
+  $('#imBar').style.width = up
+    ? ((remain % cycle) / cycle * 100).toFixed(2) + '%'
+    : (100 - clamp(remain / total, 0, 1) * 100).toFixed(2) + '%';
 }
 
 function openImmerse() {
@@ -2668,33 +2763,44 @@ function openProfileSheet() {
 
 function renderFocus() {
   const p = state.pomo;
+  const up = pomoIsCountUp();
   const total = pomoTotal();
-  const remain = p.running ? pomoRemain() : p.remain;
-  const isBreak = p.phase === 'break';
-  const started = remain < total - .5;
+  const remain = up
+    ? (p.running ? pomoElapsed() : Math.max(0, p.remain || 0))
+    : (p.running ? pomoRemain() : p.remain);
+  const isBreak = p.phase === 'break' && !up;
+  const started = up ? remain > .5 : remain < total - .5;
 
-  $('#pomoPhase').textContent = isBreak ? 'BREAK · 休息' : 'FOCUS · 专注';
+  $('#pomoPhase').textContent = isBreak ? 'BREAK · 休息' : (up ? 'FOCUS · 正计时' : 'FOCUS · 专注');
   $('#pomoTime').textContent = mmss(remain);
 
   if (p.running) {
-    $('#pomoSub').textContent = isBreak ? '放空一会儿，别刷手机' : '保持专注 · 别切走';
+    $('#pomoSub').textContent = isBreak ? '放空一会儿，别刷手机' : (up ? '自由计时 · 结束这一段才计入' : '保持专注 · 别切走');
   } else {
     $('#pomoSub').textContent = started
       ? (isBreak ? '休息已暂停' : '已暂停 · 继续这一段')
-      : (isBreak ? '准备休息一下' : '准备好就开始');
+      : (isBreak ? '准备休息一下' : (up ? '正计时 · 不限时长，随时结束' : '准备好就开始'));
   }
 
-  const ringWrap = $('#pomoFill').closest('.pomo-ring');
-  ringWrap.classList.toggle('is-break', isBreak);
-  $('#pomoFill').style.strokeDashoffset = POMO_C * clamp(remain / total, 0, 1);
+  if (up) {
+    // 正向模式：一圈一个 25 分钟节拍，不是剩余进度
+    const cycle = POMO_FOCUS[p.preset] || 1500;
+    const frac = (remain % cycle) / cycle;
+    $('#pomoFill').style.strokeDashoffset = POMO_C * (p.running || started ? (1 - frac) : 1);
+    $('#pomoFill').closest('.pomo-ring').classList.remove('is-break');
+  } else {
+    const ringWrap = $('#pomoFill').closest('.pomo-ring');
+    ringWrap.classList.toggle('is-break', isBreak);
+    $('#pomoFill').style.strokeDashoffset = POMO_C * clamp(remain / total, 0, 1);
+  }
 
   $('#pomoMain').textContent = p.running
     ? (isBreak ? '暂停休息' : '暂停专注')
     : started
       ? (isBreak ? '继续休息' : '继续专注')
-      : (isBreak ? '开始休息' : '开始专注');
+      : (isBreak ? '开始休息' : (up ? '开始正计时' : '开始专注'));
 
-  $('#pomoSkip').textContent = isBreak ? '跳过休息 · 直接下一轮' : '跳过这一段';
+  $('#pomoSkip').textContent = up ? '结束这一段 · 计入今日' : (isBreak ? '跳过休息 · 直接下一轮' : '跳过这一段');
 
   const cycle = 4;
   const done = (p.round || 0) % cycle;
@@ -2707,29 +2813,18 @@ function renderFocus() {
     ? (p.round ? `已完成 ${p.round} 个番茄 · 先休息` : '休息一下，不绑定任务')
     : (t ? `当前任务 · <b>${esc(t.title)}</b>` : '自由专注 · 不绑定具体任务');
 
-  const list = pomoTodayList();
-  $('#pomoSummary').innerHTML = `
-    <div class="ps"><i>TODAY</i><b>${list.length}<small>个</small></b></div>
-    <div class="ps"><i>FOCUS</i><b>${pomoTodayMinutes()}<small>分</small></b></div>
-    <div class="ps"><i>7 DAYS</i><b>${pomoWeekCount()}<small>个</small></b></div>`;
-
-  $('#pomoTodayLegend').textContent = `${list.length} 个`;
-  const recent = list.slice(-8).reverse();
-  $('#pomoLog').innerHTML = recent.length ? recent.map(s => {
-    const d = new Date(s.start);
-    return `<div class="pomo-log-row">
-      <span class="t">${pad(d.getHours())}:${pad(d.getMinutes())}</span>
-      <span class="n">${esc(s.title || '自由专注')}</span>
-      <span class="m">${s.minutes}′</span>
-    </div>`;
-  }).join('') : '<div class="empty-state">今天还没有番茄。<br>点上面的按钮，开始第一段。</div>';
-
-  const keys = lastDays(7);
-  const counts = keys.map(k => (state.pomo.sessions[k] || []).length);
-  renderPomoBars($('#pomoWeekBars'), keys, counts);
-
   $$('#pomoPresets button').forEach(b => b.classList.toggle('on', Number(b.dataset.preset) === p.preset));
   moveGlider($('#pomoPresets'), $('#pomoPresetGlider'), $('#pomoPresets button.on'));
+  // 正计时没有「25/5 预设」的概念：把这一排当作节拍提示，标题改掉并弱化
+  const presets = $('#pomoPresets');
+  if (presets) {
+    presets.classList.toggle('is-beat', up);
+    const labels = up ? ['25 分圈', '50 分圈', '15 分圈'] : ['25 / 5', '50 / 10', '15 / 3'];
+    $$('#pomoPresets button').forEach((b, i) => { b.textContent = labels[i]; });
+  }
+  $$('#pomoMode button').forEach(b => b.classList.toggle('on', (b.dataset.mode === 'up') === up));
+  moveGlider($('#pomoMode'), $('#pomoModeGlider'), $('#pomoMode button.on'));
+  renderPomoSide();
   updateGuardRow();
 }
 
@@ -2754,7 +2849,25 @@ function renderPomoBars(container, keys, counts) {
 
 function tickPomo() {
   const p = state.pomo;
-  if (!p.running || !p.endAt) return;
+  if (!p.running) return;
+
+  if (pomoIsCountUp()) {
+    // 正向计时：只刷新显示，永不自动结束
+    const secs = pomoElapsed();
+    const time = $('#pomoTime');
+    if (time) time.textContent = mmss(secs);
+    // 进度环在正向模式下按「每 25 分钟一圈」循环，给一点节奏感
+    const ring = $('#pomoFill');
+    if (ring) {
+      const cycle = POMO_FOCUS[p.preset] || 1500;
+      const frac = (secs % cycle) / cycle;
+      ring.style.strokeDashoffset = POMO_C * (1 - frac);
+    }
+    tickImmerse();
+    return;
+  }
+
+  if (!p.endAt) return;
   const remain = pomoRemain();
   if (remain <= .3) {
     p.remain = 0;
@@ -3746,6 +3859,13 @@ function boot() {
   $$('#pomoPresets button').forEach(b => {
     b.addEventListener('click', () => setPomoPreset(Number(b.dataset.preset)));
   });
+  $$('#pomoMode button').forEach(b => {
+    b.addEventListener('click', () => {
+      haptic('light');
+      setPomoMode(b.dataset.mode);
+    });
+  });
+  moveGlider($('#pomoMode'), $('#pomoModeGlider'), $('#pomoMode button.on'));
 
   // 统计区间切换
   $$('#rangeSeg button').forEach(b => {

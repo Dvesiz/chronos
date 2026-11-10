@@ -8,7 +8,7 @@
 
 为学习与长期规划打造的 Android 时间管理应用 —— 计划、专注、复盘，一个闭环。
 
-[![version](https://img.shields.io/badge/version-2.7.0-FF5A1F?style=flat-square)]()
+[![version](https://img.shields.io/badge/version-2.7.1-FF5A1F?style=flat-square)]()
 [![platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?style=flat-square)]()
 [![deps](https://img.shields.io/badge/deps-zero-0074D9?style=flat-square)]()
 [![build](https://img.shields.io/badge/build-No%20Gradle-24292E?style=flat-square)]()
@@ -73,7 +73,7 @@
 - **每日打卡动效** —— 当天计划全部完成（完成或跳过）后弹出一张打卡卡：进度环填满、打勾、彩带与印章，可分享成果；每天只触发一次
 
 ### 🍅 沉浸专注
-- **番茄钟** —— 经典 25/5 节奏，可自定义时长，支持自动衔接休息
+- **番茄钟** —— 经典 25/5 倒计时，也支持**正计时**（从 00:00 累加、不限时长，随时结束计入当天）；可自定义时长，支持自动衔接休息
 - **极简专注界面** —— 开始番茄后铺满整屏：只剩时间、一句话和暂停 / 退出，入场逐层浮起，每 45 秒换一句
 - **任务计时** —— 独立于番茄钟的纯专注计时，暂停 / 恢复 / 累计都在
 - **首页速启** —— 进行中的橙色卡片里直接开始 / 暂停当前任务，一键开关沉浸
@@ -191,6 +191,7 @@ chronos/
 
 | 版本 | 内容 |
 |:---|:---|
+| **2.7.1** | 番茄钟新增「正计时」：从 00:00 起累加、不限时长，随时结束并计入当天；倒计时与正计时一键切换 |
 | **2.7.0** | 接入 Cloudflare Worker + D1 的邮箱验证码账号、个人多设备同步、反馈通知与版本检查；修复 APK 首次登录后不再持续同步的问题，并为 token 刷新补齐超时保护 |
 | **2.6.7** | 导出改为系统「保存为」JSON 文件，不再导出文本分享；统计页重排，打卡日历移至顶端，月历旁新增打卡天数、投入时长、完成率与连续天数概览 |
 | **2.6.7-web** | 新增 GitHub Pages 在线体验版：复用 APK 的静态界面和逻辑，浏览器本地保存数据，支持 JSON 文件下载与导入，系统级 Android 能力显示为浏览器说明 |

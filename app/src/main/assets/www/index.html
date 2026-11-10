@@ -113,6 +113,12 @@
 
         <div class="focus-grid">
           <section class="pomo-stage glass">
+            <div class="pomo-mode" id="pomoMode">
+              <button data-mode="down" class="on">倒计时</button>
+              <button data-mode="up">正计时</button>
+              <span class="seg-glider" id="pomoModeGlider"></span>
+            </div>
+
             <div class="seg pomo-presets" id="pomoPresets">
               <button data-preset="25" class="on">25 / 5</button>
               <button data-preset="50">50 / 10</button>
@@ -401,7 +407,7 @@
               </div>
               <div class="about-title">时序 · Chronos</div>
               <div class="about-sub">让每一段时间，都有明确的方向。</div>
-              <div class="about-ver" id="aboutVer">Version 2.7.0 · 个人版</div>
+              <div class="about-ver" id="aboutVer">Version 2.7.1 · 个人版</div>
               <div class="about-hint" id="envHint"></div>
               <div style="display:flex;gap:8px;margin-top:12px">
                 <button class="pill-btn" id="btnFeedback">反馈问题</button>
