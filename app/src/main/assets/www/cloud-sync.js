@@ -39,8 +39,38 @@
     return id;
   }
   function isObject(value) { return value && typeof value === 'object' && !Array.isArray(value); }
+  /**
+   * 结构相等判断（替代每层递归都 JSON.stringify 的旧写法）。
+   *
+   * 旧实现 cloneOps 在每一层递归都执行
+   *   if (JSON.stringify(before) === JSON.stringify(after)) return out;
+   * 等于对每个子树做一次完整序列化：days 涨到 120 天后，一次 save 会
+   * 序列化几十次整个子树。这里改为就地短路比较，代价降到 O(变化量)。
+   */
+  function sameValue(a, b) {
+    if (a === b) return true;
+    if (typeof a !== typeof b) return false;
+    if (a === null || b === null) return false;
+    if (typeof a !== 'object') return false;   // 原始类型已由 a === b 覆盖
+    var aArr = Array.isArray(a), bArr = Array.isArray(b);
+    if (aArr !== bArr) return false;
+    if (aArr) {
+      if (a.length !== b.length) return false;
+      for (var i = 0; i < a.length; i++) if (!sameValue(a[i], b[i])) return false;
+      return true;
+    }
+    var ak = Object.keys(a), bk = Object.keys(b);
+    if (ak.length !== bk.length) return false;
+    for (var j = 0; j < ak.length; j++) {
+      var k = ak[j];
+      if (!Object.prototype.hasOwnProperty.call(b, k)) return false;
+      if (!sameValue(a[k], b[k])) return false;
+    }
+    return true;
+  }
+
   function cloneOps(before, after, path, out) {
-    if (JSON.stringify(before) === JSON.stringify(after)) return out;
+    if (sameValue(before, after)) return out;
     if (!isObject(before) || !isObject(after) || Array.isArray(before) || Array.isArray(after)) {
       out.push({ op: 'set', path: path, value: clone(after) });
       return out;
