@@ -107,6 +107,34 @@
   function persistQueue() { write(QUEUE_KEY, state.queue.slice(-MAX_QUEUE)); }
   function headSeq() { return Number(localStorage.getItem(HEAD_KEY) || 0); }
   function setHeadSeq(value) { try { localStorage.setItem(HEAD_KEY, String(Math.max(0, Number(value) || 0))); } catch (e) {} }
+
+  /**
+   * 云端要覆盖本地之前，先把本地快照留一份。
+   * 上次事故里本地数据是被直接替换掉的，用户完全没有回退余地。
+   * 只保留最近一份，避免占满 localStorage。
+   */
+  var BACKUP_KEY = 'chronos.state.before-cloud-sync';
+  function backupLocal(reason) {
+    try {
+      var snapshot = state.get();
+      if (!snapshot) return;
+      // 空数据的本机没有备份价值，别把云端数据挤掉
+      var hasData = (snapshot.days && Object.keys(snapshot.days).length) ||
+                    (snapshot.reviews && Object.keys(snapshot.reviews).length);
+      if (!hasData) return;
+      localStorage.setItem(BACKUP_KEY, JSON.stringify({
+        at: Date.now(),
+        reason: reason || 'cloud_overwrite',
+        state: snapshot
+      }));
+    } catch (e) {}
+  }
+  function applyRemote(next, reason) {
+    if (JSON.stringify(next) === JSON.stringify(state.get())) return;
+    backupLocal(reason);
+    state.queuedState = clone(next);
+    state.apply(clone(next), true);
+  }
   async function flush() {
     if (!API_BASE || !state.loggedIn || state.syncing || !state.queue.length) return;
     state.syncing = true;
@@ -123,7 +151,20 @@
       state.queuedState = clone(result.state || state.queuedState);
       uploaded = true;
     } catch (e) {
-      /* 网络恢复后由下一次保存或 online 事件重试 */
+      // 服务端拒绝整份 replace：说明队列里是旧版逻辑留下的破坏性事件。
+      // 直接丢弃这些事件并拉取云端，绝不再重试（否则会一直顶着云端状态）。
+      if (e && e.code === 'replace_forbidden') {
+        state.queue = state.queue.filter(function (event) {
+          return !(event.ops || []).some(function (op) {
+            return op.op === 'replace' && (!op.path || op.path.length === 0);
+          });
+        });
+        persistQueue();
+        state.syncing = false;
+        pullLatest();
+        return;
+      }
+      /* 其它错误：网络恢复后由下一次保存或 online 事件重试 */
     } finally {
       state.syncing = false;
       if (uploaded && state.loggedIn && state.queue.length) flush();
@@ -148,11 +189,10 @@
         state.queue = rebasedOps.length ? [{ eventId: randomId(), deviceId: deviceId(), baseSeq: remoteSeq, ops: rebasedOps, clientAt: Date.now() }] : [];
         state.queuedState = clone(merged);
         persistQueue();
-        if (JSON.stringify(merged) !== JSON.stringify(state.get())) state.apply(clone(merged), true);
+        applyRemote(merged, 'rebase');
         flush();
       } else {
-        state.queuedState = clone(remote.state);
-        if (JSON.stringify(remote.state) !== JSON.stringify(state.get())) state.apply(clone(remote.state), true);
+        applyRemote(remote.state, 'poll');
       }
     } catch (e) {
       /* Keep local state and retry on the next poll, resume, or online event. */
@@ -180,36 +220,49 @@
     if (!state.pollTimer) state.pollTimer = global.setInterval(pullLatest, 5000);
   }
 
+  /**
+   * 登录后的首次对账。
+   *
+   * 历史事故：这里曾提供「保留本机数据并上传」，用一条全量 replace 覆盖云端。
+   * 在浏览器登录时，本机往往是很久以前的旧数据，一次点击就把安卓几小时的
+   * 新记录整份抹掉，随后所有设备都同步成旧数据。
+   *
+   * 新规则（不对称，故意偏向云端）：
+   *  1. 云端有数据 → 一律以云端为准，本地覆盖成云端，绝不上传本地；
+   *  2. 云端为空   → 本地有数据才上传（这是唯一允许全量上传的时机），
+   *                  否则什么都不做。
+   */
   async function loginReady(auth, localState) {
     if (!API_BASE || !auth) return;
     write(SESSION_KEY, auth);
     state.loggedIn = true;
     startPolling();
     state.queuedState = clone(localState);
+
     var remote = await request('/v1/sync/snapshot');
     var hasRemote = Number(remote.headSeq || 0) > 0;
-    var hasLocal = !!(localState && ((localState.days && Object.keys(localState.days).length) || (localState.reviews && Object.keys(localState.reviews).length)));
-    if (hasRemote && hasLocal && JSON.stringify(remote.state) !== JSON.stringify(localState)) {
-      var useCloud = global.confirm('检测到云端已有 Chronos 数据。点击“确定”使用云端数据，点击“取消”保留本机数据并上传。');
-      if (useCloud) {
-        state.queue = [];
-        persistQueue();
-        state.queuedState = clone(remote.state);
-        state.apply(clone(remote.state), true);
-      } else {
-        state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: remote.headSeq || 0, ops: [{ op: 'replace', path: [], value: clone(localState) }], clientAt: Date.now() });
-        setHeadSeq(remote.headSeq || 0);
-        persistQueue();
-      }
-    } else if (!hasRemote) {
-      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: remote.headSeq || 0, ops: [{ op: 'replace', path: [], value: clone(localState) }], clientAt: Date.now() });
-      setHeadSeq(remote.headSeq || 0);
+
+    if (hasRemote) {
+      // 丢弃任何在登录前残留的队列，避免旧操作被重放
+      state.queue = [];
       persistQueue();
-    } else {
-      state.queuedState = clone(remote.state);
       setHeadSeq(remote.headSeq || 0);
-      if (JSON.stringify(remote.state) !== JSON.stringify(localState)) state.apply(clone(remote.state), true);
+      applyRemote(remote.state, 'login');
+      return;
     }
+
+    // 云端为空：只在这时把本地数据抬上去
+    var hasLocal = !!(localState && (
+      (localState.days && Object.keys(localState.days).length) ||
+      (localState.reviews && Object.keys(localState.reviews).length) ||
+      (localState.template && localState.template.length)
+    ));
+    state.queue = [];
+    if (hasLocal) {
+      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: 0, ops: [{ op: 'replace', path: [], value: clone(localState) }], clientAt: Date.now() });
+    }
+    setHeadSeq(0);
+    persistQueue();
     await flush();
   }
 
@@ -256,12 +309,20 @@
       state.loggedIn = !!read(SESSION_KEY, null);
       state.booted = true;
       if (state.loggedIn) {
+        // 打开页面时同样以云端为准：先丢掉旧队列，再拉快照覆盖本地。
+        // 只有本地干净（无待传队列）时才直接覆盖，避免吞掉真正的未上传改动。
         request('/v1/sync/snapshot').then(function (remote) {
           if (remote && remote.state) {
             setHeadSeq(remote.headSeq || 0);
-            if (state.queue.length === 0 && JSON.stringify(remote.state) !== JSON.stringify(state.get())) {
-              state.queuedState = clone(remote.state);
-              state.apply(clone(remote.state), true);
+            if (Number(remote.headSeq || 0) > 0) {
+              // 云端已有数据：本地队列若源自旧版本的全量 replace，必须丢弃
+              state.queue = state.queue.filter(function (event) {
+                return !(event.ops || []).some(function (op) {
+                  return op.op === 'replace' && (!op.path || op.path.length === 0);
+                });
+              });
+              persistQueue();
+              applyRemote(remote.state, 'boot');
             }
           }
           flush();

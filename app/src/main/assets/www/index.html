@@ -384,6 +384,11 @@
                 <button class="pill-btn" id="btnImport">导入</button>
               </div>
               <input type="file" id="importFile" accept="application/json,.json" hidden>
+              <div class="row" id="rowCloudRestore" hidden>
+                <div class="row-icon icon-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v5h5"/></svg></div>
+                <div class="row-body"><div class="row-title">恢复同步前的本机数据</div><div class="row-sub" id="cloudRestoreSub">云端覆盖本机时留下的快照</div></div>
+                <button class="pill-btn" id="btnCloudRestore">恢复</button>
+              </div>
               <div class="row">
                 <div class="row-icon icon-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3v12"/><path d="M8 9l4-4 4 4"/><path d="M5 21h14"/><path d="M9 17h6"/></svg></div>
                 <div class="row-body"><div class="row-title">演示数据</div><div class="row-sub">填充近 7 天示例，仅影响本机</div></div>

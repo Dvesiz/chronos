@@ -3575,6 +3575,51 @@ function bindSettings() {
     haptic('light');
     $('#importFile').click();
   });
+
+  /* 同步事故后的一键回退：云端覆盖本机前留下的快照 */
+  const CLOUD_BACKUP = 'chronos.state.before-cloud-sync';
+  function readCloudBackup() {
+    try {
+      const raw = localStorage.getItem(CLOUD_BACKUP);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      return obj && obj.state ? obj : null;
+    } catch (e) { return null; }
+  }
+  function refreshCloudRestoreRow() {
+    const row = $('#rowCloudRestore');
+    if (!row) return;
+    const bk = readCloudBackup();
+    if (!bk) { row.hidden = true; return; }
+    row.hidden = false;
+    const d = new Date(bk.at || Date.now());
+    const sub = $('#cloudRestoreSub');
+    if (sub) {
+      const pad2 = n => String(n).padStart(2, '0');
+      const when = `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+      sub.textContent = `云端覆盖本机时留下的快照 · ${when}`;
+    }
+  }
+  refreshCloudRestoreRow();
+  $('#btnCloudRestore')?.addEventListener('click', () => {
+    haptic('light');
+    const bk = readCloudBackup();
+    if (!bk) { toast('没有可恢复的快照'); return; }
+    if (!confirm('恢复到「云端覆盖之前」的本机数据？\n\n恢复后会立刻用这份数据覆盖云端，其它设备随后也会同步成这份数据。')) return;
+    try {
+      state = normalizeState(bk.state);
+      // 先退出登录，避免恢复过程中又被云端覆盖回去
+      if (window.ChronosCloud && window.ChronosCloud.hasSession()) {
+        window.ChronosCloud.logout().catch(() => {});
+      }
+      save(true);
+      localStorage.removeItem(CLOUD_BACKUP);
+      toast('已恢复 · 正在重新加载');
+      setTimeout(() => { try { location.reload(); } catch (e) {} }, 650);
+    } catch (e) {
+      toast('恢复失败');
+    }
+  });
   $('#importFile').addEventListener('change', e => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;

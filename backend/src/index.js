@@ -170,6 +170,13 @@ async function appendEventWithCas(env, user, event) {
     const document = await env.DB.prepare('SELECT state_json,head_seq FROM sync_documents WHERE user_id=?').bind(user.id).first();
     const state = JSON.parse(document.state_json);
     if (!validateStateSize(state)) throw new Error('state_too_large');
+    // 云端已有数据时禁止「整份 replace」：这是历史上的数据丢失事故来源
+    // （旧版客户端会用本地陈旧状态 replace 覆盖整个云端，再被其它设备拉走）。
+    // 只有 head_seq === 0（首次上传）才允许全量替换。
+    if (Number(document.head_seq || 0) > 0
+      && event.ops.some(op => op.op === 'replace' && (!op.path || op.path.length === 0))) {
+      throw new Error('replace_forbidden');
+    }
     const nextState = applyOps(state, event.ops);
     if (!validateStateSize(nextState)) throw new Error('state_too_large');
     const duplicate = await env.DB.prepare('SELECT server_seq FROM sync_events WHERE user_id=? AND event_id=?').bind(user.id, event.eventId).first();
@@ -209,6 +216,7 @@ async function syncEvents(request, env, user) {
       accepted.push({ eventId: event.eventId, serverSeq: result.serverSeq, duplicate: result.duplicate });
     } catch (err) {
       if (err?.message === 'state_too_large') return error('state_too_large', 413);
+      if (err?.message === 'replace_forbidden') return error('replace_forbidden', 409, '云端已有数据，不允许整份覆盖；请拉取云端后重试');
       if (err?.message === 'sync_conflict') return error('sync_conflict', 409, '云端正在同步，请稍后重试');
       throw err;
     }
