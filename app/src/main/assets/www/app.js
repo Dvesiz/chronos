@@ -133,6 +133,20 @@ function normalizeState(s) {
   if (!s.celebrated || typeof s.celebrated !== 'object' || Array.isArray(s.celebrated)) s.celebrated = {};
   if (!s.pendingCelebration || typeof s.pendingCelebration !== 'object' || Array.isArray(s.pendingCelebration)) s.pendingCelebration = {};
 
+  // 超窗日期的每日汇总（明细只留 DETAIL_DAYS 天，更早的压到这里）
+  // 导入 / 云端下发都必须保留，否则年度趋势会丢
+  if (!s.summary || typeof s.summary !== 'object' || Array.isArray(s.summary)) s.summary = {};
+  Object.keys(s.summary).forEach(k => {
+    const v = s.summary[k];
+    if (!v || typeof v !== 'object' || Array.isArray(v)) { delete s.summary[k]; return; }
+    if (typeof v.actual !== 'number' || !isFinite(v.actual)) v.actual = 0;
+    if (typeof v.planned !== 'number' || !isFinite(v.planned)) v.planned = 0;
+    if (typeof v.done !== 'number') v.done = 0;
+    if (typeof v.total !== 'number') v.total = 0;
+    if (typeof v.skipped !== 'number') v.skipped = 0;
+    v.checked = !!v.checked;
+  });
+
   // 番茄钟
   s.pomo = s.pomo || {};
   const p = s.pomo;
@@ -169,12 +183,51 @@ function importState(raw) {
 }
 
 let saveTimer = null;
+
+/** 逐日明细保留天数；更早的日期只留每日汇总（见 summary 字段） */
+const DETAIL_DAYS = 120;
+
+/**
+ * 把超出明细窗口的日期压缩成「每日汇总」，永久保留。
+ *
+ * 旧实现直接 delete 掉第 121 天及更早的数据：用户用满 4 个月后，
+ * 最早的记录被静默删除，年度回顾做不了 —— 这对「长期规划」定位是矛盾的。
+ * 现在改为：明细只留 DETAIL_DAYS 天，更早的只保留 total/完成数/打卡，
+ * 体积几乎不增长，但年度趋势能看。
+ */
+function compactDays() {
+  const keys = Object.keys(state.days).sort();
+  if (keys.length <= DETAIL_DAYS) return;
+  state.summary = state.summary || {};
+  const drop = keys.slice(0, keys.length - DETAIL_DAYS);
+  drop.forEach(k => {
+    const rec = state.days[k];
+    if (rec) {
+      const s = daySummary(rec);
+      // 已经有汇总且更新更晚就不覆盖
+      const prev = state.summary[k];
+      if (!prev || !(prev.at >= (rec.updatedAt || 0))) {
+        state.summary[k] = {
+          actual: s.actual,
+          planned: s.planned,
+          done: s.done,
+          total: s.total,
+          skipped: s.skipped || 0,
+          checked: !!state.celebrated[k],
+          at: rec.updatedAt || 0
+        };
+      }
+    }
+    delete state.days[k];
+  });
+}
+
 function save(immediate) {
   const doSave = () => {
+    compactDays();
     const keys = Object.keys(state.days).sort();
-    while (keys.length > 120) delete state.days[keys.shift()];
-    // 番茄记录同样按 120 天裁剪，否则 JSON 会无限膨胀（每次保存都要全量序列化 + 重建闹钟）
-    const cutoff = keys.length ? keys[0] : dateKey(addDays(new Date(), -120));
+    const cutoff = keys.length ? keys[0] : dateKey(addDays(new Date(), -DETAIL_DAYS));
+    // 番茄明细同样只留明细窗口；汇总里已经记了当天投入，不影响历史趋势
     const sessions = (state.pomo && state.pomo.sessions) || {};
     Object.keys(sessions).forEach(k => { if (k < cutoff) delete sessions[k]; });
     Object.keys(state.reviews || {}).forEach(k => { if (k < cutoff) delete state.reviews[k]; });

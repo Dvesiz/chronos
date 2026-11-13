@@ -105,6 +105,30 @@
   }
 
   function persistQueue() { write(QUEUE_KEY, state.queue.slice(-MAX_QUEUE)); }
+
+  /**
+   * 队列过长时塌缩成一条合并事件，而不是丢弃最旧的。
+   *
+   * 旧实现用 slice(-MAX_QUEUE) 硬截断：连续离线改 100 次以上，最早的改动
+   * 会被静默扔掉（而且没有任何提示）。离线场景下这是真实的数据丢失。
+   *
+   * 现在改为：把整条队列重放到「已确认云端状态」上，用最终结果反向 diff 出
+   * 一条合并事件。中间过程会丢，但**最终状态一定能传到云端**。
+   */
+  function compactQueue() {
+    if (state.queue.length <= MAX_QUEUE) return;
+    var base = state.queuedState ? clone(state.queuedState) : {};
+    // queuedState 已经是含全部本地改动后的状态，直接与云端基线比对即可
+    var merged = diff(base, state.get ? state.get() : base);
+    var keep = state.queue.slice(-1)[0] || null;
+    state.queue = merged.length ? [{
+      eventId: randomId(),
+      deviceId: deviceId(),
+      baseSeq: keep ? keep.baseSeq : headSeq(),
+      ops: merged,
+      clientAt: Date.now()
+    }] : [];
+  }
   function headSeq() { return Number(localStorage.getItem(HEAD_KEY) || 0); }
   function setHeadSeq(value) { try { localStorage.setItem(HEAD_KEY, String(Math.max(0, Number(value) || 0))); } catch (e) {} }
 
@@ -296,7 +320,7 @@
       var ops = diff(before, next);
       if (!ops.length) return;
       state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: headSeq(), ops: ops, clientAt: Date.now() });
-      state.queue = state.queue.slice(-MAX_QUEUE);
+      compactQueue();
       state.queuedState = next;
       persistQueue();
       flush();

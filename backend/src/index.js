@@ -4,6 +4,8 @@ import { requireConfig } from './config.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const MAX_BODY = 1024 * 1024;
+/** 每个用户保留的事件日志条数；更早的会被裁剪，快照才是真相来源 */
+const MAX_EVENTS_PER_USER = 500;
 const CODE_TTL = 10 * 60 * 1000;
 const MAX_CODE_ATTEMPTS = 5;
 const EMAIL_WINDOW = 15 * 60 * 1000;
@@ -191,6 +193,14 @@ async function appendEventWithCas(env, user, event) {
           .bind(JSON.stringify(nextState), serverSeq, createdAt, user.id, document.head_seq)
       ]);
       if (batch[0].meta.changes !== 1 || batch[1].meta.changes !== 1) continue;
+      // 事件日志只用于「客户端增量拉取」，不是真相来源（sync_documents 才是）。
+      // 每写一条就顺手裁掉超出上限的旧日志，否则 D1 会无限膨胀。
+      try {
+        await env.DB.prepare('DELETE FROM sync_events WHERE user_id=? AND server_seq<=?')
+          .bind(user.id, serverSeq - MAX_EVENTS_PER_USER).run();
+      } catch (pruneErr) {
+        /* 裁剪失败不影响本次同步写入 */
+      }
       return { state: nextState, headSeq: serverSeq, serverSeq, duplicate: false };
     } catch (err) {
       /* Same user sequence was claimed concurrently; the next attempt reads the new snapshot. */
