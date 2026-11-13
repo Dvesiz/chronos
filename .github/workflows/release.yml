@@ -1,0 +1,115 @@
+name: Build & Release APK
+
+# 打 tag（如 v2.7.1）时自动构建签名 APK 并上传到对应的 GitHub Release。
+# 也可以在 Actions 页面手动触发（workflow_dispatch），只构建不上传。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 上传 Release 资产需要
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Read version from manifest
+        id: ver
+        run: |
+          VERSION=$(awk -F'"' '/android:versionName=/{print $2; exit}' app/src/main/AndroidManifest.xml)
+          CODE=$(awk -F'"' '/android:versionCode=/{print $2; exit}' app/src/main/AndroidManifest.xml)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "manifest version: $VERSION (code $CODE)"
+
+      # 打 tag 时必须与 manifest 版本一致，否则 Release 里的包和标签会对不上
+      - name: Verify tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$TAG" != "${{ steps.ver.outputs.version }}" ]; then
+            echo "::error::tag $GITHUB_REF_NAME 与 manifest versionName=${{ steps.ver.outputs.version }} 不一致"
+            echo "请先把 AndroidManifest.xml 的 versionName 改成 $TAG 再打 tag"
+            exit 1
+          fi
+          echo "tag 与 manifest 版本一致：$TAG"
+
+      - name: Run regression tests
+        working-directory: backend
+        run: |
+          npm ci
+          npm run test:all
+
+      # GitHub 上的 ubuntu runner 自带 Android SDK，build.sh 通过 ANDROID_SDK 读取
+      - name: Prepare Android SDK paths
+        id: sdk
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "sdk=$SDK" >> "$GITHUB_OUTPUT"
+          # build-tools 用已安装的最高版本，platform 固定 android-35
+          BT=$(ls -1 "$SDK/build-tools" | sort -V | tail -1)
+          echo "bt=$SDK/build-tools/$BT" >> "$GITHUB_OUTPUT"
+          echo "using build-tools $BT"
+
+      - name: Restore signing keystore
+        env:
+          KS_B64: ${{ secrets.CHRONOS_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.CHRONOS_STORE_PASSWORD }}
+          K_PASS: ${{ secrets.CHRONOS_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "::error::缺少 secret CHRONOS_KEYSTORE_B64，无法签名。请按 README 的「CI 发版」章节配置。"
+            exit 1
+          fi
+          echo "$KS_B64" | base64 -d > keystore.jks
+          {
+            echo "storePassword=$KS_PASS"
+            echo "keyPassword=$K_PASS"
+          } > keystore.properties
+          chmod 600 keystore.jks keystore.properties
+
+      - name: Build signed APK
+        env:
+          ANDROID_SDK: ${{ steps.sdk.outputs.sdk }}
+          ANDROID_BUILD_TOOLS: ${{ steps.sdk.outputs.bt }}
+          ANDROID_JAR: ${{ steps.sdk.outputs.sdk }}/platforms/android-35/android.jar
+        run: |
+          chmod +x build.sh
+          ./build.sh
+          ls -lh build/*.apk
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chronos-${{ steps.ver.outputs.version }}
+          path: build/Chronos-${{ steps.ver.outputs.version }}.apk
+          retention-days: 30
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Chronos-${{ steps.ver.outputs.version }}.apk
+          fail_on_unmatched_files: true
+          # Release 已存在时更新资产，不重复开新版本
+          make_latest: true
+
+      - name: Clean up signing material
+        if: always()
+        run: |
+          rm -f keystore.jks keystore.properties

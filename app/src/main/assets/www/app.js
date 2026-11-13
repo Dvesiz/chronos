@@ -3825,7 +3825,8 @@ function checkPermissions() {
   }
   updateGuardRow();
 
-  const v = n.appVersion ? n.appVersion() : '';
+  // 版本号优先级：原生读取（APK 真实安装版本）> cloud-config 常量（网页版）
+  const v = (n.appVersion ? n.appVersion() : '') || window.CHRONOS_APP_VERSION || '';
   if (v) $('#aboutVer').textContent = 'Version ' + v + ' · 个人版';
   $('#envHint').textContent = window.ChronosCloud && window.ChronosCloud.hasSession()
     ? '已登录 · 本地优先，云端同步已开启'

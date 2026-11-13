@@ -42,6 +42,26 @@ echo "==> link resources"
 # assets 不用 aapt2 -A：Windows 版 aapt2 会把条目写成 assets/www\xxx，
 # Android 按 assets/www/xxx 找不到文件（表现为 ERR_FILE_NOT_FOUND）。
 # jar 走的始终是 '/'，且会原样保留 resources.arsc 的 STORED 方式。
+echo "==> inject app version"
+CONFIG_JS="$SRC/assets/www/cloud-config.js"
+if [ -f "$CONFIG_JS" ]; then
+  # 版本号只认 manifest：把它同步进 cloud-config.js，
+  # 避免「manifest 已升版、前端仍显示旧版本」这种靠人肉同步的失误。
+  node -e '
+    const fs = require("fs");
+    const p = process.argv[1], v = process.argv[2];
+    let s = fs.readFileSync(p, "utf8");
+    const re = /window\.CHRONOS_APP_VERSION\s*=\s*window\.CHRONOS_APP_VERSION\s*\|\|\s*['"][^'"]*['"]/;
+    const line = `window.CHRONOS_APP_VERSION = window.CHRONOS_APP_VERSION || "${v}"`;
+    if (re.test(s)) s = s.replace(re, line);
+    else if (!/CHRONOS_APP_VERSION/.test(s)) s += "\n" + line + ";\n";
+    fs.writeFileSync(p, s);
+  ' "$CONFIG_JS" "$VERSION"
+  echo "  assets version: $(grep -o 'CHRONOS_APP_VERSION = window.CHRONOS_APP_VERSION || "[^"]*"' "$CONFIG_JS" | head -1)"
+else
+  echo "  (cloud-config.js not found, skip)"
+fi
+
 echo "==> package assets"
 ( cd "$SRC" && jar --update --file "$OUT/base.apk" --no-manifest assets )
 

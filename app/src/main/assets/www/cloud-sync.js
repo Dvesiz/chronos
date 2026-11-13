@@ -3,6 +3,8 @@
   'use strict';
 
   var API_BASE = String(global.CHRONOS_API_BASE || '').replace(/\/$/, '');
+  // 版本号统一来自 cloud-config.js（与 AndroidManifest 的 versionName 同源）
+  var APP_VERSION = String(global.CHRONOS_APP_VERSION || 'dev');
   var SESSION_KEY = 'chronos.cloud.session.v1';
   var QUEUE_KEY = 'chronos.cloud.queue.v1';
   var DEVICE_KEY = 'chronos.cloud.device.v1';
@@ -341,7 +343,7 @@
       persistQueue();
     },
     updateProfile: async function (profile) { return request('/v1/account/profile', { method: 'PATCH', body: JSON.stringify(profile) }); },
-    feedback: async function (body) { return request('/v1/feedback', { method: 'POST', body: JSON.stringify({ body: body, appVersion: '2.7.1' }) }); },
+    feedback: async function (body) { return request('/v1/feedback', { method: 'POST', body: JSON.stringify({ body: body, appVersion: APP_VERSION }) }); },
     latest: async function () { return request('/v1/app/latest'); },
     queueState: function (nextState) {
       if (!API_BASE || !state.loggedIn || !state.booted) return;

@@ -149,6 +149,28 @@ cd chronos
 若只有 `keystore.jks` 而缺 `keystore.properties`，构建会直接报错，不会另生成新钥。
 </details>
 
+### 方式三：打 tag 自动发版（CI）
+
+推一个 `v*` 标签，GitHub Actions 会自动构建签名 APK 并上传到对应 Release，不需要本地操作：
+
+```bash
+# 先把 AndroidManifest.xml 的 versionName 改成目标版本
+git tag v2.8.0 && git push origin v2.8.0
+```
+
+工作流会依次执行：**校验 tag 与 manifest 版本一致 → 跑全量测试 → 构建签名 APK → 上传 Release**。
+版本号只认 `AndroidManifest.xml` 一处，`build.sh` 打包时会把它同步进前端的 `cloud-config.js`。
+
+> 首次使用需在仓库 **Settings → Secrets and variables → Actions** 配置三个 secret：
+>
+> | Secret | 内容 |
+> |:---|:---|
+> | `CHRONOS_KEYSTORE_B64` | 签名库的 base64：`base64 -w0 keystore.jks` |
+> | `CHRONOS_STORE_PASSWORD` | `keystore.properties` 里的 `storePassword` |
+> | `CHRONOS_KEY_PASSWORD` | `keystore.properties` 里的 `keyPassword` |
+>
+> 换签名密钥会导致已安装的旧版本无法覆盖升级，务必用同一份 `keystore.jks`。
+
 ## 技术架构
 
 这个项目刻意做了一些**反潮流**的选择：
