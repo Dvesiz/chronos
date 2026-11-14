@@ -48,7 +48,17 @@
           var req = db.transaction('outbox', 'readonly').objectStore('outbox').getAll();
           req.onsuccess = function () {
             var rows = req.result || [];
-            if (rows.length) { state.queue = rows; persistQueue(); }
+            if (rows.length) {
+              var byId = {};
+              state.queue.forEach(function (event) { if (event && event.eventId) byId[event.eventId] = event; });
+              rows.forEach(function (event) {
+                if (!event || !event.eventId) return;
+                var current = byId[event.eventId];
+                if (!current || Number(event.queuedAt || 0) >= Number(current.queuedAt || 0)) byId[event.eventId] = event;
+              });
+              state.queue = Object.keys(byId).map(function (key) { return byId[key]; });
+              persistQueue();
+            }
             resolve();
           };
           req.onerror = function () { resolve(); };
@@ -262,6 +272,7 @@
       baseRevision: revision(),
       ops: merged,
       deleteEntities: deleteEntities,
+      queuedAt: Date.now(),
       clientAt: Date.now()
     }] : [];
   }
@@ -411,7 +422,7 @@
       if (remoteSeq >= 0) request('/v1/sync/ack', { method: 'POST', body: JSON.stringify({ deviceId: deviceId(), ackServerSeq: remoteSeq, appVersion: APP_VERSION, protocolVersion: PROTOCOL_VERSION }) }).catch(function () {});
       if (Number(state.getLocalRevision() || 0) !== localRevisionAtStart && !state.queue.length) {
         var raced = diff(remote.state, state.get());
-        if (raced.length) state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: raced, deleteEntities: collectDeletedEntities(remote.state, state.get()), clientAt: Date.now() });
+        if (raced.length) state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: raced, deleteEntities: collectDeletedEntities(remote.state, state.get()), queuedAt: Date.now(), clientAt: Date.now() });
         state.queuedState = clone(state.get());
         persistQueue();
         state.syncStatus = 'pending';
@@ -420,7 +431,7 @@
         var merged = clone(remote.state);
         eligibleQueue().forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
         var rebasedOps = diff(remote.state, merged);
-        state.queue = rebasedOps.length ? [{ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: rebasedOps, deleteEntities: mergeDeleteEntities(eligibleQueue()), clientAt: Date.now() }] : [];
+        state.queue = rebasedOps.length ? [{ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: rebasedOps, deleteEntities: mergeDeleteEntities(eligibleQueue()), queuedAt: Date.now(), clientAt: Date.now() }] : [];
         state.queuedState = clone(merged);
         persistQueue();
         applyRemote(merged, 'rebase');
@@ -480,7 +491,7 @@
     var rebasedOps = diff(remoteState, merged);
     state.queue = rebasedOps.length ? [{
       eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(),
-      ops: rebasedOps, deleteEntities: mergeDeleteEntities(eligibleQueue()), clientAt: Date.now()
+      ops: rebasedOps, deleteEntities: mergeDeleteEntities(eligibleQueue()), queuedAt: Date.now(), clientAt: Date.now()
     }] : [];
     state.queuedState = clone(merged);
     persistQueue();
@@ -516,7 +527,7 @@
     ));
     var pending = eligibleQueue();
     if (!pending.length && hasLocal) {
-      state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: 0, baseRevision: revision(), ops: [{ op: 'replace', path: [], value: clone(localState) }], clientAt: Date.now() });
+      state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: 0, baseRevision: revision(), ops: [{ op: 'replace', path: [], value: clone(localState) }], queuedAt: Date.now(), clientAt: Date.now() });
     }
     setHeadSeq(0);
     persistQueue();
@@ -553,7 +564,7 @@
       var ops = diff(before, next);
       var deleteEntities = collectDeletedEntities(before, next);
       if (!ops.length && !deleteEntities.length) return;
-       state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, deleteEntities: deleteEntities, status: 'pending', clientAt: Date.now() });
+       state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, deleteEntities: deleteEntities, status: 'pending', queuedAt: Date.now(), clientAt: Date.now() });
       compactQueue();
       state.queuedState = next;
       persistQueue();
