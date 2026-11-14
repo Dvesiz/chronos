@@ -226,7 +226,13 @@
       })
       });
       var accepted = {};
-      (result.accepted || []).forEach(function (item) { accepted[item.eventId] = true; });
+      if (Array.isArray(result.results)) {
+        result.results.forEach(function (item) {
+          if (item && item.status === 'accepted') accepted[item.eventId] = true;
+        });
+      } else {
+        (result.accepted || []).forEach(function (item) { accepted[item.eventId] = true; });
+      }
       state.queue = state.queue.filter(function (event) { return !accepted[event.eventId]; });
       persistQueue();
       setHeadSeq(result.headSeq || headSeq());

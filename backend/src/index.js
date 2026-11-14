@@ -246,6 +246,7 @@ async function syncEvents(request, env, user) {
   const events = Array.isArray(data.events) ? data.events : [];
   if (events.length > 50) return error('events_too_many', 400);
   const accepted = [];
+  const results = [];
   let state = compactState(DEFAULT_STATE);
   let headSeq = 0;
   let revision = 0;
@@ -264,6 +265,8 @@ async function syncEvents(request, env, user) {
       state = result.state;
       headSeq = result.headSeq;
       revision = result.revision ?? revision + 1;
+      const resultRow = { eventId: event.eventId, status: 'accepted', serverSeq: result.serverSeq, revision, duplicate: result.duplicate };
+      results.push(resultRow);
       accepted.push({ eventId: event.eventId, serverSeq: result.serverSeq, revision, duplicate: result.duplicate });
     } catch (err) {
       if (err?.message === 'state_too_large') return error('state_too_large', 413);
@@ -276,7 +279,7 @@ async function syncEvents(request, env, user) {
   }
   const document = await env.DB.prepare('SELECT state_json,head_seq FROM sync_documents WHERE user_id=?').bind(user.id).first();
   if (document) { state = JSON.parse(document.state_json); headSeq = document.head_seq; revision = document.revision ?? revision; }
-  return json({ ok: true, headSeq, revision, accepted, state });
+  return json({ ok: true, headSeq, revision, accepted, results, state });
 }
 
 async function syncSnapshot(env, user) {
