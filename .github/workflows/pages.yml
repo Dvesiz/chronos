@@ -28,6 +28,18 @@ jobs:
         run: |
           npm ci
           npm run test:all
+      - name: Install Playwright for sync E2E
+        run: |
+          python -m pip install --upgrade pip playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Run sync browser E2E
+        run: |
+          python -m http.server 8899 --bind 127.0.0.1 --directory app/src/main/assets/www >/tmp/chronos-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          python tests/e2e/sync-e2e.py
+
       - name: Prepare static site
         run: |
           rm -rf _site
