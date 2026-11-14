@@ -70,6 +70,9 @@ let state = loadState();
 function applyCloudState(nextState, immediate) {
   if (!nextState || typeof nextState !== 'object') return;
   state = normalizeState(nextState);
+  // 云端旧快照可能携带历史模板重复项，应用前先迁移今日计划，
+  // 否则每次同步都会把旧模板再次叠加回来。
+  dedupeTodayTemplateTasks(todayKey());
   save(!!immediate);
   renderAccountUI();
   renderHome();

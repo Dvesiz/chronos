@@ -37,3 +37,15 @@ assert.equal(tasks.find(t => t.templateId === 'math').status, 'done', '重复时
 assert.equal(tasks.filter(t => t.templateId === 'english').length, 1);
 assert.ok(tasks.some(t => t.title === '临时新增任务'), '用户临时新增任务不能被清理');
 console.log('✓ 今日安排：历史模板重复任务去重，保留进度并保留自定义任务');
+
+// 云端快照下发也必须走同一迁移，否则旧任务会被同步重新写回
+const cloud = ctx({ template, days: {}, pomo: { sessions: {} } });
+cloud.applyCloudState({
+  template,
+  days: { [today]: { tasks: duplicateTasks } },
+  pomo: { sessions: {} }
+}, true);
+const cloudTasks = vm.runInContext('state.days["' + today + '"] .tasks', cloud);
+assert.equal(cloudTasks.filter(t => t.templateId === 'math').length, 1,
+  '云端快照应用后不能再次保留重复模板任务');
+console.log('✓ 云端快照：应用同步数据时也执行今日模板去重');
