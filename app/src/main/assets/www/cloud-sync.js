@@ -202,6 +202,7 @@
     if (!API_BASE || !state.loggedIn || state.syncing || !state.queue.length) return;
     state.syncing = true;
     var uploaded = false;
+    var retryAfterPull = false;
     try {
       var result = await request('/v1/sync/events', {
         method: 'POST', body: JSON.stringify({
@@ -224,7 +225,7 @@
       // 服务端拒绝整份 replace：说明队列里是旧版逻辑留下的破坏性事件。
       // 直接丢弃这些事件并拉取云端，绝不再重试（否则会一直顶着云端状态）。
       if (e && e.code === 'stale_revision') {
-        pullLatest();
+        retryAfterPull = true;
         return;
       }
       if (e && e.code === 'replace_forbidden') {
@@ -241,10 +242,11 @@
       /* 其它错误：网络恢复后由下一次保存或 online 事件重试 */
     } finally {
       state.syncing = false;
-      if (uploaded && state.loggedIn && state.queue.length) flush();
+      if (retryAfterPull && state.loggedIn) pullLatest(true);
+      else if (uploaded && state.loggedIn && state.queue.length) flush();
     }
   }
-  async function pullLatest() {
+  async function pullLatest(forceSnapshot) {
     if (!API_BASE || !state.loggedIn || !state.booted || state.pulling || state.syncing) return;
     state.pulling = true;
     try {
@@ -253,7 +255,7 @@
       var remoteSeq = Number(head && head.headSeq || 0);
       // 没有 acknowledged snapshot 时，即使 headSeq 相等也必须拉一次快照，
       // 否则离线队列压缩会错误退回 queuedState 作为云端基线。
-      if (remoteSeq <= headSeq() && acknowledgedState()) { flush(); return; }
+      if (!forceSnapshot && remoteSeq <= headSeq() && acknowledgedState()) { flush(); return; }
       var remote = await request('/v1/sync/snapshot');
       if (!remote || !remote.state) return;
       remoteSeq = Number(remote.headSeq || remoteSeq);
