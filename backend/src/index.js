@@ -172,7 +172,20 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
     const document = await env.DB.prepare('SELECT state_json,head_seq,revision FROM sync_documents WHERE user_id=?').bind(user.id).first();
     const state = JSON.parse(document.state_json);
     const revision = Number(document.revision || 0);
+    const payloadHash = await sha256(JSON.stringify({
+      deviceId: event.deviceId,
+      baseSeq: event.baseSeq,
+      baseRevision: event.baseRevision ?? null,
+      ops: event.ops,
+      clientAt: event.clientAt ?? null
+    }));
     if (!validateStateSize(state)) throw new Error('state_too_large');
+    const ledgerEntry = await env.DB.prepare('SELECT server_seq,revision,payload_hash FROM operation_ledger WHERE user_id=? AND event_id=?')
+      .bind(user.id, event.eventId).first();
+    if (ledgerEntry) {
+      if (ledgerEntry.payload_hash !== payloadHash) throw new Error('idempotency_key_reused');
+      return { state, headSeq: document.head_seq, revision: document.revision, serverSeq: ledgerEntry.server_seq, duplicate: true };
+    }
     // revision 是业务版本门禁；旧客户端没有 baseRevision 时退回 baseSeq。
     const clientRevision = expectedRevision === null
       ? (event.baseRevision === undefined ? Number(event.baseSeq || 0) : event.baseRevision)
@@ -200,10 +213,12 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
       const batch = await env.DB.batch([
         env.DB.prepare('INSERT INTO sync_events (user_id,server_seq,event_id,device_id,base_seq,ops_json,client_at,created_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM sync_documents WHERE user_id=? AND head_seq=? AND revision=?)')
           .bind(user.id, serverSeq, event.eventId, event.deviceId, event.baseSeq, JSON.stringify(event.ops), event.clientAt || null, createdAt, user.id, document.head_seq, revision),
+        env.DB.prepare('INSERT INTO operation_ledger (user_id,event_id,device_id,server_seq,revision,payload_hash,created_at) SELECT ?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM sync_documents WHERE user_id=? AND head_seq=? AND revision=?)')
+          .bind(user.id, event.eventId, event.deviceId, serverSeq, nextRevision, payloadHash, createdAt, user.id, document.head_seq, revision),
         env.DB.prepare('UPDATE sync_documents SET state_json=?,head_seq=?,revision=?,updated_at=? WHERE user_id=? AND head_seq=? AND revision=?')
           .bind(JSON.stringify(nextState), serverSeq, nextRevision, createdAt, user.id, document.head_seq, revision)
       ]);
-      if (batch[0].meta.changes !== 1 || batch[1].meta.changes !== 1) continue;
+      if (batch[0].meta.changes !== 1 || batch[1].meta.changes !== 1 || batch[2].meta.changes !== 1) continue;
       // 事件日志只用于「客户端增量拉取」，不是真相来源（sync_documents 才是）。
       // 每写一条就顺手裁掉超出上限的旧日志，否则 D1 会无限膨胀。
       try {
@@ -248,6 +263,7 @@ async function syncEvents(request, env, user) {
       if (err?.message === 'state_too_large') return error('state_too_large', 413);
       if (err?.message === 'replace_forbidden') return error('replace_forbidden', 409, '云端已有数据，不允许整份覆盖；请拉取云端后重试');
       if (err?.message === 'stale_revision') return json({ error: 'stale_revision', message: '云端版本已更新，请先拉取并合并', currentRevision: err.currentRevision }, 409);
+      if (err?.message === 'idempotency_key_reused') return error('idempotency_key_reused', 409, 'eventId 已被不同内容使用，已拒绝重复提交');
       if (err?.message === 'sync_conflict') return error('sync_conflict', 409, '云端正在同步，请稍后重试');
       throw err;
     }
