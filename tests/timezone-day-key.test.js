@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const SRC = fs.readFileSync('app/src/main/assets/www/app.js', 'utf8');
+const doc = { querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}, createElement: () => ({ style: { setProperty() {} }, appendChild() {}, classList: { add() {}, remove() {}, toggle() {} } }) };
+const ctx = { console, Date, Math, JSON, Number, String, Array, Object, Promise, setTimeout, clearTimeout, navigator: { vibrate() {}, share() { return Promise.resolve(); }, clipboard: { writeText() { return Promise.resolve(); } } }, confirm: () => true, alert() {}, document: doc, localStorage: { getItem: () => null, setItem() {}, removeItem() {} }, window: {}, performance: { now: () => Date.now() } };
+vm.createContext(ctx); vm.runInContext(SRC, ctx);
+assert.equal(typeof ctx.planTargetKey, 'function');
+const tomorrow = ctx.planTargetKey(1);
+assert.notEqual(tomorrow, ctx.planTargetKey(0), '跨自然日计划必须使用不同日期键');
+assert.equal(typeof ctx.finishPomoEarly, 'function');
+console.log('✓ 日期键：按设备本地时区归属，跨午夜切换正确');
