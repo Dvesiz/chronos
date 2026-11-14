@@ -99,6 +99,10 @@ function loadState() {
 
 /** 把任意来源的数据补全成可用的 state（本地读取 / 导入共用） */
 function normalizeState(s) {
+  // schemaVersion=2：迁移只补结构字段，不覆盖用户已有业务数据；重复执行无副作用。
+  if (s && typeof s === 'object' && !Array.isArray(s) && (!Number.isInteger(s.schemaVersion) || s.schemaVersion < 2)) {
+    s = { ...s, schemaVersion: 2 };
+  }
   // 只有「完全没有存档」才回退到默认值：模板被删空是合法状态，
   // 不能因此把 days / 番茄记录等历史数据一起丢掉。
   if (!s || typeof s !== 'object' || Array.isArray(s)) {
@@ -178,15 +182,28 @@ function importState(raw) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('文件内容不是有效的 JSON 数据');
   if (!obj.days && !Array.isArray(obj.template)) throw new Error('缺少计划或学习记录');
   if (!confirm('导入会覆盖当前全部数据（计划、统计、设置），确定继续吗？')) return null;
-  try {
-    localStorage.setItem('chronos.state.before-import', localStorage.getItem(STORE) || '');
-  } catch (e) {}
+  saveBackupSnapshot(state, 'import');
   state = normalizeState(obj);
   save(true);
   return state;
 }
 
 let saveTimer = null;
+const BACKUPS_KEY = 'chronos.state.backups.v1';
+const MAX_BACKUPS = 5;
+
+function saveBackupSnapshot(snapshot, reason) {
+  try {
+    const current = JSON.parse(localStorage.getItem(BACKUPS_KEY) || '[]');
+    const next = [{ at: Date.now(), reason: reason || 'manual', state: JSON.parse(JSON.stringify(snapshot)) }, ...current]
+      .filter((item, index, all) => item && item.state && index < MAX_BACKUPS);
+    localStorage.setItem(BACKUPS_KEY, JSON.stringify(next));
+    return true;
+  } catch (e) {
+    try { toast('本地备份失败，请立即导出数据'); } catch (ignored) {}
+    return false;
+  }
+}
 
 /** 逐日明细保留天数；更早的日期只留每日汇总（见 summary 字段） */
 const DETAIL_DAYS = 120;
@@ -237,7 +254,12 @@ function save(immediate) {
     Object.keys(state.reviews || {}).forEach(k => { if (k < cutoff) delete state.reviews[k]; });
     Object.keys(state.celebrated || {}).forEach(k => { if (k < cutoff) delete state.celebrated[k]; });
     Object.keys(state.pendingCelebration || {}).forEach(k => { if (k < cutoff) delete state.pendingCelebration[k]; });
-    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
+    try {
+      localStorage.setItem(STORE, JSON.stringify(state));
+    } catch (e) {
+      toast('本地保存失败，请立即导出数据');
+      if (window.ChronosReport) window.ChronosReport.report('local_storage', e, { where: 'save' });
+    }
     const n = N();
     if (n && n.saveState) {
       try { n.saveState(JSON.stringify(state)); } catch (e) {}
@@ -3696,19 +3718,18 @@ function bindSettings() {
   });
 
   /* 同步事故后的一键回退：云端覆盖本机前留下的快照 */
-  const CLOUD_BACKUP = 'chronos.state.before-cloud-sync';
-  function readCloudBackup() {
+  function readCloudBackups() {
     try {
-      const raw = localStorage.getItem(CLOUD_BACKUP);
-      if (!raw) return null;
-      const obj = JSON.parse(raw);
-      return obj && obj.state ? obj : null;
-    } catch (e) { return null; }
+      const list = JSON.parse(localStorage.getItem(BACKUPS_KEY) || '[]');
+      return Array.isArray(list) ? list.filter(item => item && item.state) : [];
+    } catch (e) { return []; }
   }
+  function readCloudBackup() { return readCloudBackups()[0] || null; }
   function refreshCloudRestoreRow() {
     const row = $('#rowCloudRestore');
     if (!row) return;
-    const bk = readCloudBackup();
+    const backups = readCloudBackups();
+    const bk = backups[0];
     if (!bk) { row.hidden = true; return; }
     row.hidden = false;
     const d = new Date(bk.at || Date.now());
@@ -3716,29 +3737,35 @@ function bindSettings() {
     if (sub) {
       const pad2 = n => String(n).padStart(2, '0');
       const when = `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-      sub.textContent = `云端覆盖本机时留下的快照 · ${when}`;
+      sub.textContent = `最近快照 · ${when} · 共 ${backups.length} 份可恢复`;
+    }
+    const list = $('#cloudBackupList');
+    if (list) {
+      list.hidden = false;
+      const pad2 = n => String(n).padStart(2, '0');
+      list.innerHTML = backups.map((item, index) => {
+        const d = new Date(item.at || Date.now());
+        const when = `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+        return `<button class="backup-item" data-backup-index="${index}"><span>${when}</span><small>${esc(item.reason || '同步快照')}</small><b>恢复</b></button>`;
+      }).join('');
+      list.querySelectorAll('[data-backup-index]').forEach(btn => btn.addEventListener('click', () => restoreCloudBackup(Number(btn.dataset.backupIndex))));
     }
   }
-  refreshCloudRestoreRow();
-  $('#btnCloudRestore')?.addEventListener('click', () => {
+  function restoreCloudBackup(index) {
     haptic('light');
-    const bk = readCloudBackup();
+    const bk = readCloudBackups()[index];
     if (!bk) { toast('没有可恢复的快照'); return; }
-    if (!confirm('恢复到「云端覆盖之前」的本机数据？\n\n恢复后会立刻用这份数据覆盖云端，其它设备随后也会同步成这份数据。')) return;
+    if (!confirm('恢复这份本机快照？恢复后会覆盖当前数据，并在下次登录时重新同步。')) return;
     try {
       state = normalizeState(bk.state);
-      // 先退出登录，避免恢复过程中又被云端覆盖回去
-      if (window.ChronosCloud && window.ChronosCloud.hasSession()) {
-        window.ChronosCloud.logout().catch(() => {});
-      }
+      if (window.ChronosCloud && window.ChronosCloud.hasSession()) window.ChronosCloud.logout().catch(() => {});
       save(true);
-      localStorage.removeItem(CLOUD_BACKUP);
       toast('已恢复 · 正在重新加载');
       setTimeout(() => { try { location.reload(); } catch (e) {} }, 650);
-    } catch (e) {
-      toast('恢复失败');
-    }
-  });
+    } catch (e) { toast('恢复失败'); }
+  }
+  refreshCloudRestoreRow();
+  $('#btnCloudRestore')?.addEventListener('click', () => restoreCloudBackup(0));
   $('#importFile').addEventListener('change', e => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
