@@ -15,6 +15,8 @@ assert.match(SERVER, /deleteEntities/);
 assert.match(SERVER, /INSERT INTO sync_tombstones/);
 assert.match(SERVER, /idempotency_key_reused|stale_revision/);
 assert.match(CORE, /tombstone|deleted/i);
+assert.match(SERVER, /applyOps\(state, event\.ops, deleteEntities\)/,
+  'event state must apply deletion metadata before persisting the snapshot');
 assert.match(CLIENT, /collectDeletedEntities/);
 assert.match(CLIENT, /deleteEntities/);
 console.log('✓ deletion tombstone contract is present');

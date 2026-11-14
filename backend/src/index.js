@@ -204,7 +204,7 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
       && event.ops.some(op => op.op === 'replace' && (!op.path || op.path.length === 0))) {
       throw new Error('replace_forbidden');
     }
-    const nextState = applyOps(state, event.ops);
+    const nextState = applyOps(state, event.ops, deleteEntities);
     if (!validateStateSize(nextState)) throw new Error('state_too_large');
     const duplicate = await env.DB.prepare('SELECT server_seq FROM sync_events WHERE user_id=? AND event_id=?').bind(user.id, event.eventId).first();
     if (duplicate) return { state, headSeq: document.head_seq, serverSeq: duplicate.server_seq, duplicate: true };
