@@ -1989,6 +1989,20 @@ function dedupeFocusSessions(list) {
   return Array.from(seen.values());
 }
 
+function aggregateFocusHeatmap(sessionsByDay) {
+  const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
+  Object.entries(sessionsByDay || {}).forEach(([date, sessions]) => {
+    const d = parseKey(date);
+    const dow = (d.getDay() + 6) % 7;
+    dedupeFocusSessions(sessions || []).forEach(session => {
+      const start = new Date(session.start || 0);
+      const hour = start.getHours();
+      if (hour >= 0 && hour < 24) grid[dow][hour] += Number(session.seconds || (session.minutes || 0) * 60) || 0;
+    });
+  });
+  return grid;
+}
+
 function pomoTodayList() {
   const key = todayKey();
   const list = state.pomo.sessions[key] || [];
@@ -3228,6 +3242,15 @@ function buildExportFilename(date = new Date()) {
   return `chronos-${dateKey(date)}.json`;
 }
 
+function renderFocusHeatmap() {
+  const el = $('#focusHeatmap');
+  if (!el) return;
+  const grid = aggregateFocusHeatmap(Object.fromEntries(lastDays(30).map(k => [k, state.pomo.sessions[k] || []])));
+  const max = Math.max(1, ...grid.flat());
+  const labels = ['一', '二', '三', '四', '五', '六', '日'];
+  el.innerHTML = `<div class="heatmap-wrap"><div class="heatmap-hours"><span></span>${Array.from({length:24}, (_, h) => `<span>${h % 3 === 0 ? String(h).padStart(2, '0') : ''}</span>`).join('')}</div>${grid.map((row, dow) => `<div class="heatmap-row"><span class="heatmap-day">周${labels[dow]}</span>${row.map((seconds, hour) => `<i class="heatmap-cell" title="周${labels[dow]} ${hour}:00 · ${hText(seconds)}" style="--heat:${seconds ? Math.max(.12, seconds / max) : 0}"></i>`).join('')}</div>`).join('')}</div><div class="heatmap-legend"><span>少</span><i style="--heat:.12"></i><i style="--heat:.45"></i><i style="--heat:.8"></i><i style="--heat:1"></i><span>多</span></div>`;
+}
+
 function renderStats() {
   const range = statsRange;
   const keys = lastDays(range);
@@ -3247,6 +3270,8 @@ function renderStats() {
   const pomoCount = keys.reduce((a, k) => a + dedupeFocusSessions(pomoMap[k] || []).length, 0);
   const pomoMins = keys.reduce((a, k) =>
     a + dedupeFocusSessions(pomoMap[k] || []).reduce((x, s) => x + (s.minutes || 0), 0), 0);
+
+  renderFocusHeatmap();
 
   $('#statHero').innerHTML = `
     <div class="stat-block">
