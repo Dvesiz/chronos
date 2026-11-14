@@ -12,6 +12,54 @@
   var HEAD_KEY = 'chronos.cloud.head.v1';
   var REVISION_KEY = 'chronos.cloud.revision.v1';
   var MAX_QUEUE = 100;
+  var OUTBOX_DB = 'chronos-sync-v1';
+  var outboxDbPromise = null;
+  function openOutboxDb() {
+    if (!global.indexedDB) return Promise.resolve(null);
+    if (outboxDbPromise) return outboxDbPromise;
+    outboxDbPromise = new Promise(function (resolve) {
+      try {
+        var req = global.indexedDB.open(OUTBOX_DB, 1);
+        req.onupgradeneeded = function () { req.result.createObjectStore('outbox', { keyPath: 'eventId' }); };
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+    return outboxDbPromise;
+  }
+  function persistQueueIndexedDb() {
+    openOutboxDb().then(function (db) {
+      if (!db) return;
+      try {
+        var tx = db.transaction('outbox', 'readwrite');
+        var store = tx.objectStore('outbox');
+        store.clear(); state.queue.forEach(function (event) { store.put(clone(event)); });
+      } catch (e) {}
+    });
+  }
+  function loadQueueFromIndexedDb() {
+    return openOutboxDb().then(function (db) {
+      if (!db) return;
+      return new Promise(function (resolve) {
+        try {
+          var req = db.transaction('outbox', 'readonly').objectStore('outbox').getAll();
+          req.onsuccess = function () {
+            var rows = req.result || [];
+            if (rows.length) { state.queue = rows; persistQueue(); }
+            resolve();
+          };
+          req.onerror = function () { resolve(); };
+        } catch (e) { resolve(); }
+      });
+    });
+  }
+  var tabChannel = null;
+  try {
+    if (global.BroadcastChannel) {
+      tabChannel = new global.BroadcastChannel('chronos-sync-v1');
+    }
+  } catch (e) { tabChannel = null; }
+
   var state = {
     get: function () { return null; },
     apply: function () {},
@@ -151,7 +199,11 @@
     return payload;
   }
 
-  function persistQueue() { write(QUEUE_KEY, state.queue); }
+  function persistQueue() { write(QUEUE_KEY, state.queue); persistQueueIndexedDb(); }
+  function notifyTabs() { try { if (tabChannel) tabChannel.postMessage({ type: 'state-changed', at: Date.now() }); } catch (e) {} }
+  if (tabChannel) tabChannel.onmessage = function (event) {
+    if (event && event.data && event.data.type === 'state-changed') pullLatest(true);
+  };
   function acknowledgedState() { return read(ACK_KEY, null); }
   function setAcknowledged(next) { if (next) write(ACK_KEY, clone(next)); }
 
@@ -189,7 +241,8 @@
    * 上次事故里本地数据是被直接替换掉的，用户完全没有回退余地。
    * 只保留最近一份，避免占满 localStorage。
    */
-  var BACKUP_KEY = 'chronos.state.before-cloud-sync';
+  var BACKUP_KEY = 'chronos.state.backups.v1';
+  var MAX_BACKUPS = 5;
   function backupLocal(reason) {
     try {
       var snapshot = state.get();
@@ -198,11 +251,10 @@
       var hasData = (snapshot.days && Object.keys(snapshot.days).length) ||
                     (snapshot.reviews && Object.keys(snapshot.reviews).length);
       if (!hasData) return;
-      localStorage.setItem(BACKUP_KEY, JSON.stringify({
-        at: Date.now(),
-        reason: reason || 'cloud_overwrite',
-        state: snapshot
-      }));
+      var backups = read(BACKUP_KEY, []);
+      if (!Array.isArray(backups)) backups = [];
+      backups.unshift({ at: Date.now(), reason: reason || 'cloud_overwrite', state: snapshot });
+      write(BACKUP_KEY, backups.slice(0, MAX_BACKUPS));
     } catch (e) {}
   }
   function applyRemote(next, reason) {
@@ -212,7 +264,7 @@
     state.apply(clone(next), true);
   }
   async function flush() {
-    if (!API_BASE || !state.loggedIn || state.syncing || !state.queue.length) return;
+    if (!API_BASE || !state.loggedIn || state.syncing || !state.queue.length || state.queueHydrated === false) return;
     state.syncing = true;
     var uploaded = false;
     var retryAfterPull = false;
@@ -243,6 +295,7 @@
       setAcknowledged(result.state || state.queuedState);
       state.queuedState = clone(result.state || state.queuedState);
       uploaded = true;
+      notifyTabs();
     } catch (e) {
       // 服务端拒绝整份 replace：说明队列里是旧版逻辑留下的破坏性事件。
       // 直接丢弃这些事件并拉取云端，绝不再重试（否则会一直顶着云端状态）。
@@ -423,6 +476,11 @@
       state.get = hooks.get;
       state.apply = hooks.apply;
       state.queue = read(QUEUE_KEY, []);
+      state.queueHydrated = false;
+      loadQueueFromIndexedDb().then(function () {
+        state.queueHydrated = true;
+        if (state.loggedIn) flush();
+      });
       state.queuedState = clone(state.get());
       // 新会话尚无待同步队列时，先固定启动时状态作为本地基线；
       // 远程快照返回后会覆盖为 acknowledged snapshot。已有队列则必须等待远程对账。
