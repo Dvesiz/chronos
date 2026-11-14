@@ -138,9 +138,10 @@ const tick = () => new Promise(r => setImmediate(r));
     harness.api.init({ get: () => local, apply: s => { local = s; } });
     await tick(); await tick();
 
-    const backupRaw = harness.values.get('chronos.state.before-cloud-sync');
-    assert.ok(backupRaw, '云端覆盖本地前应写入本地备份');
-    const backup = JSON.parse(backupRaw);
+    const backupRaw = harness.values.get('chronos.state.backups.v1');
+    assert.ok(backupRaw, '云端覆盖本地前应写入本地备份历史');
+    const backups = JSON.parse(backupRaw);
+    const backup = backups[0];
     assert.ok(backup.state.days['2026-11-01'], '备份必须包含被覆盖前的本地数据');
     assert.equal(backup.reason, 'boot', '备份应记录覆盖原因');
     console.log('✓ 本地保护：覆盖前留快照，可事后恢复');
