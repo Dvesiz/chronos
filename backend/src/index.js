@@ -296,6 +296,23 @@ async function syncHead(env, user) {
   const row = await env.DB.prepare('SELECT head_seq,revision,updated_at FROM sync_documents WHERE user_id=?').bind(user.id).first();
   return json({ headSeq: row?.head_seq || 0, revision: row?.revision || 0, updatedAt: row?.updated_at || null });
 }
+async function syncAck(request, env, user) {
+  const data = await bodyJson(request);
+  const deviceId = String(data.deviceId || '').trim().slice(0, 128);
+  const ackServerSeq = Number(data.ackServerSeq);
+  if (!deviceId || !Number.isSafeInteger(ackServerSeq) || ackServerSeq < 0) return error('device_cursor_invalid', 400, '设备同步游标无效');
+  const document = await env.DB.prepare('SELECT head_seq FROM sync_documents WHERE user_id=?').bind(user.id).first();
+  const bounded = Math.min(ackServerSeq, Number(document?.head_seq || 0));
+  await env.DB.prepare('INSERT INTO sync_devices (user_id,device_id,acknowledged_seq,last_seen_at,app_version,protocol_version) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id,device_id) DO UPDATE SET acknowledged_seq=MAX(acknowledged_seq,excluded.acknowledged_seq),last_seen_at=excluded.last_seen_at,app_version=excluded.app_version,protocol_version=excluded.protocol_version,revoked_at=NULL')
+    .bind(user.id, deviceId, bounded, now(), String(data.appVersion || '').slice(0, 32), Number(data.protocolVersion || 1)).run();
+  return json({ ok: true, deviceId, acknowledgedSeq: bounded });
+}
+
+async function syncDevices(env, user) {
+  const rows = await env.DB.prepare('SELECT device_id,acknowledged_seq,last_seen_at,app_version,protocol_version,revoked_at FROM sync_devices WHERE user_id=? ORDER BY last_seen_at DESC').bind(user.id).all();
+  return json({ devices: rows.results || [] });
+}
+
 async function syncHistory(request, env, user) {
   const after = Math.max(0, Number(new URL(request.url).searchParams.get('after') || 0));
   const rows = await env.DB.prepare('SELECT server_seq,event_id,device_id,base_seq,ops_json,client_at,created_at FROM sync_events WHERE user_id=? AND server_seq>? ORDER BY server_seq LIMIT 500').bind(user.id, after).all();
@@ -422,6 +439,8 @@ export default {
       if (url.pathname === '/v1/sync/events' && request.method === 'POST') return withCors(await syncEvents(request, env, user), cors);
       if (url.pathname === '/v1/sync/snapshot' && request.method === 'GET') return withCors(await syncSnapshot(env, user), cors);
       if (url.pathname === '/v1/sync/head' && request.method === 'GET') return withCors(await syncHead(env, user), cors);
+      if (url.pathname === '/v1/sync/ack' && request.method === 'POST') return withCors(await syncAck(request, env, user), cors);
+      if (url.pathname === '/v1/sync/devices' && request.method === 'GET') return withCors(await syncDevices(env, user), cors);
       if (url.pathname === '/v1/sync/events' && request.method === 'GET') return withCors(await syncHistory(request, env, user), cors);
       return withCors(error('not_found', 404), cors);
     } catch (err) {

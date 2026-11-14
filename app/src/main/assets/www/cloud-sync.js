@@ -234,6 +234,9 @@
         (result.accepted || []).forEach(function (item) { accepted[item.eventId] = true; });
       }
       state.queue = state.queue.filter(function (event) { return !accepted[event.eventId]; });
+      if (result.headSeq != null && accepted && Object.keys(accepted).length) {
+        request('/v1/sync/ack', { method: 'POST', body: JSON.stringify({ deviceId: deviceId(), ackServerSeq: result.headSeq, appVersion: APP_VERSION, protocolVersion: 2 }) }).catch(function () {});
+      }
       persistQueue();
       setHeadSeq(result.headSeq || headSeq());
       setRevision(result.revision == null ? revision() : result.revision);
