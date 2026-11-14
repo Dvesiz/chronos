@@ -28,8 +28,8 @@
   --shadow: 0 6px 24px rgba(28, 28, 32, .05);
   --shadow-lg: 0 12px 36px rgba(28, 28, 32, .1);
 
-  --sat: 0px;
-  --sab: 0px;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
   --kb: 0px;
 
   --r-card: 22px;

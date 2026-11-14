@@ -81,6 +81,14 @@ public class MainActivity extends Activity {
 
         web.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                // 首次 inset 可能早于页面脚本注册，页面完成后重新分发一次。
+                view.post(view::requestApplyInsets);
+                view.postDelayed(view::requestApplyInsets, 250);
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 return !isLocalAsset(req.getUrl());
             }
