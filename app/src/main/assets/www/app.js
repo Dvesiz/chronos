@@ -271,6 +271,32 @@ function cloneTask(t, dateK) {
   };
 }
 
+function dedupeTodayTemplateTasks(dateK = todayKey()) {
+  const rec = state.days[dateK];
+  if (!rec || !Array.isArray(rec.tasks)) return false;
+  const seen = new Map();
+  const removed = new Set();
+  const rank = t => ((t.status === 'done' || t.status === 'skipped') ? 4 : 0)
+    + (t.modified ? 2 : 0) + ((t.focusAcc || 0) + (t.pomoAcc || 0) > 0 ? 1 : 0);
+  const next = [];
+  rec.tasks.forEach(task => {
+    if (!task.templateId) { next.push(task); return; }
+    const previous = seen.get(task.templateId);
+    if (!previous) { seen.set(task.templateId, task); next.push(task); return; }
+    if (rank(task) > rank(previous)) {
+      const index = next.indexOf(previous);
+      if (index >= 0) next[index] = task;
+      seen.set(task.templateId, task);
+      removed.add(previous.id);
+    } else {
+      removed.add(task.id);
+    }
+  });
+  if (!removed.size) return false;
+  rec.tasks = next;
+  return true;
+}
+
 function ensureToday() {
   const k = dateKey(new Date());
   if (!state.days[k]) {
@@ -278,6 +304,8 @@ function ensureToday() {
       tasks: state.template.map(t => cloneTask(t, k)),
       createdAt: Date.now()
     };
+    save();
+  } else if (dedupeTodayTemplateTasks(k)) {
     save();
   }
   return state.days[k];
@@ -1209,12 +1237,20 @@ function bindHero(el, task) {
   });
 }
 
+function orderTodayTasks(tasks) {
+  return (tasks || []).slice().sort((a, b) => {
+    const aDone = a.status === 'done' || a.status === 'skipped';
+    const bDone = b.status === 'done' || b.status === 'skipped';
+    return Number(aDone) - Number(bDone) || a.start - b.start;
+  });
+}
+
 function renderTimeline() {
   const rec = todayRec();
   const wrap = $('#timeline');
   if (!rec) return;
   const info = currentInfo(rec);
-  const tasks = (rec.tasks || []).slice().sort((a, b) => a.start - b.start);
+  const tasks = orderTodayTasks(rec.tasks);
 
   if (!tasks.length) {
     wrap.innerHTML = '<div class="empty-state">今天还没有安排。<br>点右上角「编辑计划」添加时段。</div>';
@@ -1721,7 +1757,7 @@ function openPlanChooser() {
 
 function openPlanSheet(dateK = todayKey()) {
   const rec = planForDate(dateK);
-  const tasks = (rec.tasks || []).slice().sort((a, b) => a.start - b.start);
+  const tasks = dateK === todayKey() ? orderTodayTasks(rec.tasks) : (rec.tasks || []).slice().sort((a, b) => a.start - b.start);
   const rows = tasks.map(t => `
     <div class="row" data-id="${t.id}" style="cursor:pointer">
       <div class="row-icon" style="background:${subjectColor(t.subject)}33;color:${subjectColor(t.subject)};box-shadow:none">
@@ -1780,6 +1816,7 @@ function openPlanSheet(dateK = todayKey()) {
     $('#toTemplate', panel).addEventListener('click', () => openTemplateSheet());
     $('#resetDay', panel).addEventListener('click', () => {
       state.days[dateK] = { tasks: state.template.map(t => cloneTask(t, dateK)), createdAt: Date.now() };
+      dedupeTodayTemplateTasks(dateK);
       save(true);
       closeSheet();
       renderHome();
@@ -1852,6 +1889,7 @@ function openTemplateSheet() {
         return kept ? kept : cloneTask(t, k);
       });
       state.days[k] = { tasks: fresh.sort((a, b) => a.start - b.start), createdAt: Date.now() };
+      dedupeTodayTemplateTasks(k);
       save(true);
       closeSheet();
       renderHome();

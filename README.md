@@ -8,7 +8,7 @@
 
 为学习与长期规划打造的 Android 时间管理应用 —— 计划、专注、复盘，一个闭环。
 
-[![version](https://img.shields.io/badge/version-2.7.3-FF5A1F?style=flat-square)]()
+[![version](https://img.shields.io/badge/version-2.7.4-FF5A1F?style=flat-square)]()
 [![platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?style=flat-square)]()
 [![deps](https://img.shields.io/badge/deps-zero-0074D9?style=flat-square)]()
 [![build](https://img.shields.io/badge/build-No%20Gradle-24292E?style=flat-square)]()
@@ -213,7 +213,7 @@ chronos/
 
 | 版本 | 内容 |
 |:---|:---|
-| **2.7.3** | 番茄钟新增「正计时」：从 00:00 起累加、不限时长，随时结束并计入当天；倒计时与正计时一键切换 |
+| **2.7.4** | 番茄钟新增「正计时」：从 00:00 起累加、不限时长，随时结束并计入当天；倒计时与正计时一键切换 |
 | **2.7.0** | 接入 Cloudflare Worker + D1 的邮箱验证码账号、个人多设备同步、反馈通知与版本检查；修复 APK 首次登录后不再持续同步的问题，并为 token 刷新补齐超时保护 |
 | **2.6.7** | 导出改为系统「保存为」JSON 文件，不再导出文本分享；统计页重排，打卡日历移至顶端，月历旁新增打卡天数、投入时长、完成率与连续天数概览 |
 | **2.6.7-web** | 新增 GitHub Pages 在线体验版：复用 APK 的静态界面和逻辑，浏览器本地保存数据，支持 JSON 文件下载与导入，系统级 Android 能力显示为浏览器说明 |
