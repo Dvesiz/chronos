@@ -158,6 +158,7 @@ function normalizeState(s) {
   if (typeof p.auto !== 'boolean') p.auto = false;
   if (typeof p.sound !== 'boolean') p.sound = true;
   if (!p.sessions || typeof p.sessions !== 'object') p.sessions = {};
+  Object.keys(p.sessions).forEach(k => { p.sessions[k] = dedupeFocusSessions(p.sessions[k]); });
   if (p.phase !== 'break') p.phase = 'focus';
   if (typeof p.remain !== 'number' || p.remain <= 0) p.remain = p.preset * 60;
   if (typeof p.running !== 'boolean') p.running = false;
@@ -250,6 +251,10 @@ function save(immediate) {
 }
 
 /* ---------------- 当日任务 ---------------- */
+function newSessionId() {
+  return `s-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function cloneTask(t, dateK) {
   return {
     id: `${dateK}:${t.id}`,
@@ -550,7 +555,7 @@ function weeklyText() {
   const totalCount = sums.reduce((a, s) => a + s.total, 0);
   const rate = totalCount ? Math.round(done / totalCount * 100) : 0;
   const active = keys.filter(k => state.days[k]).length || 1;
-  const pomo = keys.reduce((a, k) => a + ((state.pomo.sessions[k] || []).length), 0);
+  const pomo = keys.reduce((a, k) => a + dedupeFocusSessions(state.pomo.sessions[k] || []).length, 0);
   const cats = categoryTotals(keys);
   let bestIdx = 0;
   sums.forEach((s, i) => { if (s.actual > sums[bestIdx].actual) bestIdx = i; });
@@ -617,7 +622,7 @@ function metricValue(type) {
     return Object.keys(state.days).reduce((a, k) => a + daySummary(state.days[k]).actual, 0) / 3600;
   }
   if (type === 'streak') return calcStreak();
-  return Object.keys(state.pomo.sessions).reduce((a, k) => a + (state.pomo.sessions[k] || []).length, 0);
+  return Object.keys(state.pomo.sessions).reduce((a, k) => a + dedupeFocusSessions(state.pomo.sessions[k] || []).length, 0);
 }
 
 function milestoneList() {
@@ -1949,12 +1954,31 @@ function pomoRemain() {
   if (p.running && p.endAt) return Math.max(0, (p.endAt - Date.now()) / 1000);
   return Math.max(0, p.remain);
 }
-function pomoTodayList() { return state.pomo.sessions[todayKey()] || []; }
+function dedupeFocusSessions(list) {
+  const seen = new Map();
+  (list || []).forEach(session => {
+    const normalized = { ...session };
+    if (!normalized.sessionId) {
+      normalized.sessionId = `legacy-${normalized.start || 0}-${normalized.end || 0}-${normalized.taskId || normalized.title || ''}`;
+    }
+    const previous = seen.get(normalized.sessionId);
+    if (!previous || (normalized.seconds || 0) > (previous.seconds || 0)) seen.set(normalized.sessionId, normalized);
+  });
+  return Array.from(seen.values());
+}
+
+function pomoTodayList() {
+  const key = todayKey();
+  const list = state.pomo.sessions[key] || [];
+  const deduped = dedupeFocusSessions(list);
+  if (deduped.length !== list.length) state.pomo.sessions[key] = deduped;
+  return deduped;
+}
 function pomoTodayMinutes() {
   return pomoTodayList().reduce((a, s) => a + (s.minutes || 0), 0);
 }
 function pomoWeekCount() {
-  return lastDays(7).reduce((a, k) => a + ((state.pomo.sessions[k] || []).length), 0);
+  return lastDays(7).reduce((a, k) => a + dedupeFocusSessions(state.pomo.sessions[k] || []).length, 0);
 }
 function pomoLinkedTask() {
   const rec = todayRec();
@@ -2058,7 +2082,7 @@ function finishPomoEarly() {
       t.modified = true;
     } else {
       const day = rec && (rec.partialFocus || (rec.partialFocus = []));
-      if (day) day.push({ start: p.sessionStartAt || p.startAt || Date.now() - elapsed * 1000, end: Date.now(), seconds: elapsed, title: p.taskTitle || '自由专注' });
+      if (day) day.push({ sessionId: newSessionId(), start: p.sessionStartAt || p.startAt || Date.now() - elapsed * 1000, end: Date.now(), seconds: elapsed, title: p.taskTitle || '自由专注' });
     }
   }
   p.running = false;
@@ -2127,6 +2151,7 @@ function pomoFinish() {
     const key = pomoStartKey();
     const list = p.sessions[key] || (p.sessions[key] = []);
     list.push({
+      sessionId: newSessionId(),
       start: p.startAt || endedAt - minutes * 60000,
       end: endedAt,
       minutes,
@@ -2272,7 +2297,7 @@ function renderPomoSide() {
   }).join('') : '<div class="empty-state">今天还没有番茄。<br>点上面的按钮，开始第一段。</div>';
 
   const keys = lastDays(7);
-  const counts = keys.map(k => (state.pomo.sessions[k] || []).length);
+  const counts = keys.map(k => dedupeFocusSessions(state.pomo.sessions[k] || []).length);
   renderPomoBars($('#pomoWeekBars'), keys, counts);
 }
 
@@ -3126,7 +3151,7 @@ function openDaySheet(k) {
       <div class="report-row"><span>计划投入</span><b>${hText(s.planned)}</b></div>
       <div class="report-row"><span>实际投入</span><b>${hText(s.actual)}</b></div>
       <div class="report-row"><span>完成率</span><b>${s.total ? Math.round(s.done / s.total * 100) : 0}%</b></div>
-      <div class="report-row"><span>番茄</span><b>${(state.pomo.sessions[k] || []).length} 个</b></div>
+      <div class="report-row"><span>番茄</span><b>${dedupeFocusSessions(state.pomo.sessions[k] || []).length} 个</b></div>
     </div>
     <div class="detail-note">${checked ? '这天完成了当日计划，已计入打卡。' : '这天没有完成全部计划，未打卡。'}</div>`);
 }
@@ -3197,9 +3222,9 @@ function renderStats() {
   const avg = totalActual / activeDays;
 
   const pomoMap = state.pomo.sessions;
-  const pomoCount = keys.reduce((a, k) => a + ((pomoMap[k] || []).length), 0);
+  const pomoCount = keys.reduce((a, k) => a + dedupeFocusSessions(pomoMap[k] || []).length, 0);
   const pomoMins = keys.reduce((a, k) =>
-    a + (pomoMap[k] || []).reduce((x, s) => x + (s.minutes || 0), 0), 0);
+    a + dedupeFocusSessions(pomoMap[k] || []).reduce((x, s) => x + (s.minutes || 0), 0), 0);
 
   $('#statHero').innerHTML = `
     <div class="stat-block">
@@ -3342,7 +3367,7 @@ function categoryTotals(keys) {
 function pomoRecords(keys) {
   const out = [];
   keys.forEach(k => {
-    (state.pomo.sessions[k] || []).forEach(s => out.push({ ...s, date: k }));
+    dedupeFocusSessions(state.pomo.sessions[k] || []).forEach(s => out.push({ ...s, date: k }));
   });
   return out.sort((a, b) => b.start - a.start);
 }
