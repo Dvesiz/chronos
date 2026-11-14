@@ -7,6 +7,7 @@
   var APP_VERSION = String(global.CHRONOS_APP_VERSION || 'dev');
   var SESSION_KEY = 'chronos.cloud.session.v1';
   var QUEUE_KEY = 'chronos.cloud.queue.v1';
+  var ACK_KEY = 'chronos.cloud.acknowledged.v1';
   var DEVICE_KEY = 'chronos.cloud.device.v1';
   var HEAD_KEY = 'chronos.cloud.head.v1';
   var MAX_QUEUE = 100;
@@ -136,7 +137,9 @@
     return payload;
   }
 
-  function persistQueue() { write(QUEUE_KEY, state.queue.slice(-MAX_QUEUE)); }
+  function persistQueue() { write(QUEUE_KEY, state.queue); }
+  function acknowledgedState() { return read(ACK_KEY, null); }
+  function setAcknowledged(next) { if (next) write(ACK_KEY, clone(next)); }
 
   /**
    * 队列过长时塌缩成一条合并事件，而不是丢弃最旧的。
@@ -149,8 +152,8 @@
    */
   function compactQueue() {
     if (state.queue.length <= MAX_QUEUE) return;
-    var base = state.queuedState ? clone(state.queuedState) : {};
-    // queuedState 已经是含全部本地改动后的状态，直接与云端基线比对即可
+    var base = acknowledgedState() || state.queuedState || {};
+    // 只从最后一次服务端确认状态计算，不能以 queuedState 作为云端基线
     var merged = diff(base, state.get ? state.get() : base);
     var keep = state.queue.slice(-1)[0] || null;
     state.queue = merged.length ? [{
@@ -204,6 +207,7 @@
       state.queue = state.queue.filter(function (event) { return !accepted[event.eventId]; });
       persistQueue();
       setHeadSeq(result.headSeq || headSeq());
+      setAcknowledged(result.state || state.queuedState);
       state.queuedState = clone(result.state || state.queuedState);
       uploaded = true;
     } catch (e) {
@@ -233,11 +237,14 @@
       var head = await request('/v1/sync/head');
       if (state.syncing) return;
       var remoteSeq = Number(head && head.headSeq || 0);
-      if (remoteSeq <= headSeq()) { flush(); return; }
+      // 没有 acknowledged snapshot 时，即使 headSeq 相等也必须拉一次快照，
+      // 否则离线队列压缩会错误退回 queuedState 作为云端基线。
+      if (remoteSeq <= headSeq() && acknowledgedState()) { flush(); return; }
       var remote = await request('/v1/sync/snapshot');
       if (!remote || !remote.state) return;
       remoteSeq = Number(remote.headSeq || remoteSeq);
       setHeadSeq(remoteSeq);
+      setAcknowledged(remote.state);
       if (state.queue.length) {
         var merged = clone(remote.state);
         state.queue.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
@@ -288,6 +295,20 @@
    *  2. 云端为空   → 本地有数据才上传（这是唯一允许全量上传的时机），
    *                  否则什么都不做。
    */
+  function rebaseQueue(remoteState, remoteSeq) {
+    var merged = clone(remoteState) || {};
+    state.queue.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
+    var rebasedOps = diff(remoteState, merged);
+    state.queue = rebasedOps.length ? [{
+      eventId: randomId(), deviceId: deviceId(), baseSeq: remoteSeq,
+      ops: rebasedOps, clientAt: Date.now()
+    }] : [];
+    state.queuedState = clone(merged);
+    persistQueue();
+    applyRemote(merged, 'rebase');
+    return merged;
+  }
+
   async function loginReady(auth, localState) {
     if (!API_BASE || !auth) return;
     write(SESSION_KEY, auth);
@@ -299,11 +320,11 @@
     var hasRemote = Number(remote.headSeq || 0) > 0;
 
     if (hasRemote) {
-      // 丢弃任何在登录前残留的队列，避免旧操作被重放
-      state.queue = [];
-      persistQueue();
       setHeadSeq(remote.headSeq || 0);
-      applyRemote(remote.state, 'login');
+      setAcknowledged(remote.state);
+      if (state.queue.length) rebaseQueue(remote.state, remote.headSeq || 0);
+      else applyRemote(remote.state, 'login');
+      flush();
       return;
     }
 
@@ -339,7 +360,7 @@
         global.clearInterval(state.pollTimer);
         state.pollTimer = null;
       }
-      state.queue = [];
+      // 退出只清理会话和轮询，保留业务数据及待同步队列，供下次登录继续上传。
       persistQueue();
     },
     updateProfile: async function (profile) { return request('/v1/account/profile', { method: 'PATCH', body: JSON.stringify(profile) }); },
@@ -362,6 +383,9 @@
       state.apply = hooks.apply;
       state.queue = read(QUEUE_KEY, []);
       state.queuedState = clone(state.get());
+      // 新会话尚无待同步队列时，先固定启动时状态作为本地基线；
+      // 远程快照返回后会覆盖为 acknowledged snapshot。已有队列则必须等待远程对账。
+      if (!state.queue.length && !acknowledgedState()) setAcknowledged(state.get());
       state.loggedIn = !!read(SESSION_KEY, null);
       state.booted = true;
       if (state.loggedIn) {
@@ -370,15 +394,11 @@
         request('/v1/sync/snapshot').then(function (remote) {
           if (remote && remote.state) {
             setHeadSeq(remote.headSeq || 0);
+            setAcknowledged(remote.state);
             if (Number(remote.headSeq || 0) > 0) {
-              // 云端已有数据：本地队列若源自旧版本的全量 replace，必须丢弃
-              state.queue = state.queue.filter(function (event) {
-                return !(event.ops || []).some(function (op) {
-                  return op.op === 'replace' && (!op.path || op.path.length === 0);
-                });
-              });
-              persistQueue();
-              applyRemote(remote.state, 'boot');
+              setAcknowledged(remote.state);
+              if (state.queue.length) rebaseQueue(remote.state, remote.headSeq || 0);
+              else applyRemote(remote.state, 'boot');
             }
           }
           flush();

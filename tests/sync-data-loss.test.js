@@ -45,6 +45,7 @@ function createHarness(fetchImpl, { session = true } = {}) {
     confirm: () => false,          // 浏览器/WebView 里用户点「取消」
     addEventListener: (n, cb) => { listeners[n] = cb; },
     setInterval: (cb, ms) => { intervals.push({ callback: cb, ms }); return intervals.length; },
+    clearInterval: () => {},
     setTimeout, clearTimeout
   };
   vm.runInNewContext(CLIENT, {
@@ -143,6 +144,105 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.ok(backup.state.days['2026-11-01'], '备份必须包含被覆盖前的本地数据');
     assert.equal(backup.reason, 'boot', '备份应记录覆盖原因');
     console.log('✓ 本地保护：覆盖前留快照，可事后恢复');
+  }
+
+  // ---------- 5. 不同字段的离线修改不能被队列压缩丢掉 ----------
+  {
+    let current = { fields: {} };
+    const harness = createHarness(async (url) => {
+      const u = String(url);
+      if (u.includes('/v1/sync/snapshot')) return response({ state: { fields: {} }, headSeq: 0 });
+      if (u.includes('/v1/sync/events')) return response({ error: 'offline' }, 503);
+      throw new Error('unexpected ' + u);
+    });
+    harness.api.init({ get: () => current, apply: s => { current = s; } });
+    await tick();
+    for (let i = 1; i <= 150; i++) {
+      current = { fields: { ...(current.fields || {}), ['field-' + i]: 'value-' + i } };
+      harness.api.queueState(current);
+    }
+    await tick();
+    const queued = JSON.parse(harness.values.get('chronos.cloud.queue.v1') || '[]');
+    const replayed = queued.reduce((root, event) => {
+      for (const op of event.ops || []) {
+        if (op.op !== 'set') continue;
+        let parent = root;
+        for (let j = 0; j < op.path.length - 1; j++) parent = parent[op.path[j]] ||= {};
+        parent[op.path[op.path.length - 1]] = op.value;
+      }
+      return root;
+    }, {});
+    assert.equal(replayed.fields['field-1'], 'value-1', '压缩后必须保留最早的 field-1 修改');
+    assert.equal(replayed.fields['field-150'], 'value-150', '压缩后必须保留最后的 field-150 修改');
+    console.log('✓ 队列压缩：不同字段的离线修改全部保留');
+  }
+
+  // ---------- 6. 登录对账不能清空已有的本地待同步队列 ----------
+  {
+    let posted = null;
+    let current = { remote: 0, local: 1 };
+    const harness = createHarness(async (url, options = {}) => {
+      const u = String(url);
+      if (u.includes('/v1/auth/verify')) return response({ accessToken: 'a', refreshToken: 'r', user: { email: 'u@e.com' } });
+      if (u.includes('/v1/sync/snapshot')) return response({ state: { remote: 2 }, headSeq: 8 });
+      if (u.includes('/v1/sync/events')) {
+        posted = JSON.parse(options.body);
+        return response({ accepted: posted.events.map(event => ({ eventId: event.eventId })), headSeq: 9, state: { remote: 2, local: 1 } });
+      }
+      throw new Error('unexpected ' + u);
+    }, { session: false });
+    harness.values.set('chronos.cloud.queue.v1', JSON.stringify([{
+      eventId: 'pending-local', deviceId: 'device-a', baseSeq: 7,
+      ops: [{ op: 'set', path: ['local'], value: 1 }], clientAt: Date.now()
+    }]));
+    harness.api.init({ get: () => current, apply: s => { current = s; } });
+    await harness.api.verify('u@e.com', '123456');
+    await tick();
+    assert.deepEqual(JSON.parse(JSON.stringify(current)), { remote: 2, local: 1 }, '登录时应将本地待同步修改 rebase 到云端基线');
+    assert.ok(posted && posted.events.some(event => event.ops.some(op => op.path.join('.') === 'local')),
+      '登录对账后应上传本地待同步修改');
+    console.log('✓ 登录对账：本地待同步修改不被云端快照清空');
+  }
+
+  // ---------- 7. 启动请求期间发生本地修改时不能被远程快照覆盖 ----------
+  {
+    const snapshot = deferred();
+    let current = { local: 0 };
+    const harness = createHarness(async (url) => {
+      const u = String(url);
+      if (u.includes('/v1/sync/snapshot')) return snapshot.promise;
+      if (u.includes('/v1/sync/events')) return response({ error: 'offline' }, 503);
+      throw new Error('unexpected ' + u);
+    });
+    harness.api.init({ get: () => current, apply: s => { current = s; } });
+    current = { local: 1 };
+    harness.api.queueState(current);
+    snapshot.resolve(response({ state: { remote: 2 }, headSeq: 3 }));
+    await tick(); await tick();
+    assert.deepEqual(JSON.parse(JSON.stringify(current)), { remote: 2, local: 1 },
+      '启动远程快照返回前发生的本地修改必须保留');
+    console.log('✓ 启动竞态：远程快照不覆盖请求期间的本地修改');
+  }
+
+  // ---------- 8. 退出登录失败时不能清空待同步队列 ----------
+  {
+    let current = { local: 1 };
+    const harness = createHarness(async (url) => {
+      const u = String(url);
+      if (u.includes('/v1/sync/snapshot')) return response({ state: {}, headSeq: 0 });
+      if (u.includes('/v1/auth/logout')) throw new Error('offline');
+      if (u.includes('/v1/sync/events')) return response({ error: 'offline' }, 503);
+      throw new Error('unexpected ' + u);
+    });
+    harness.api.init({ get: () => current, apply: s => { current = s; } });
+    await tick();
+    current = { local: 2 };
+    harness.api.queueState(current);
+    await tick();
+    await harness.api.logout();
+    const queued = JSON.parse(harness.values.get('chronos.cloud.queue.v1') || '[]');
+    assert.ok(queued.length > 0, '退出登录失败时必须保留待同步队列');
+    console.log('✓ 退出登录：网络失败不清空待同步队列');
   }
 
   console.log('\n全部通过：登录/启动不再用旧本地覆盖云端');
