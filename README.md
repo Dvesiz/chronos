@@ -1,127 +1,144 @@
+# 时序 · Chronos
+
 <div align="center">
 
 <img src="docs/img/logo.svg" width="112" alt="时序 · Chronos" />
 
-# 时序 · Chronos
+### 让每一段时间，都有明确的方向
 
-**让每一段时间，都有明确的方向。**
+为学习、工作与长期目标打造的本地优先时间管理应用。用计划确定方向，用专注完成当下，用复盘看见长期变化。
 
-为学习与长期规划打造的 Android 时间管理应用 —— 计划、专注、复盘，一个闭环。
+<p>
+  <a href="https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.7.apk"><strong>下载 Android APK</strong></a>
+  ·
+  <a href="https://dvesiz.github.io/chronos/app/"><strong>在线体验</strong></a>
+  ·
+  <a href="https://dvesiz.github.io/chronos/"><strong>产品官网</strong></a>
+</p>
 
-[![version](https://img.shields.io/badge/version-2.7.7-FF5A1F?style=flat-square)]()
-[![platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?style=flat-square)]()
-[![deps](https://img.shields.io/badge/deps-zero-0074D9?style=flat-square)]()
-[![build](https://img.shields.io/badge/build-No%20Gradle-24292E?style=flat-square)]()
-[![license](https://img.shields.io/badge/license-MIT-2EA44F?style=flat-square)]()
-
-**零框架 · 零依赖 · 无 Gradle —— 一条 build.sh 打包**
-
-<br />
-
-### 下载安装
-
-[![下载 APK](https://img.shields.io/badge/下载-APK%202.7.0-FF5A1F?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.0.apk)
-
-**Android 8.0+** ｜ 约 110 KB ｜ 无后台联网、无账号、数据全部存在本机
-
-下载后允许「安装未知来源应用」即可；全部版本见 [Releases](https://github.com/Dvesiz/chronos/releases)。
-
-<br />
-
-### 产品官网
-
-[打开 Chronos 产品官网](https://dvesiz.github.io/chronos/)
-
-官网包含功能介绍、界面截图、APK 下载入口与隐私说明。
-
-### 在线体验
-
-[在浏览器中试用 Chronos](https://dvesiz.github.io/chronos/app/)
-
-浏览器版直接复用 APK 的界面与交互逻辑，计划、专注、番茄钟、统计、打卡、导入导出均在本地运行；系统通知、精确闹钟、悬浮窗和极度沉浸等 Android 能力请安装 APK。
-
-| | | |
-|:---:|:---:|:---:|
-| ![今日](docs/img/home.png) | ![番茄钟](docs/img/focus.png) | ![沉浸](docs/img/immerse.png) |
-| **今日** · 时间轴与当前任务 | **番茄钟** · 节奏与沉浸开关 | **沉浸专注** · 只剩时间与一句话 |
-| ![统计](docs/img/stats.png) | ![任务](docs/img/task.png) | ![暗色](docs/img/dark.png) |
-| **统计** · 7 / 30 天复盘 | **任务详情** · 十种快捷操作 | **暗色模式** · 夜间自动适配 |
-
-<sub>以上均为平板（820 × 1093）双栏布局实拍；手机端自动收成单栏。</sub>
+[![Version](https://img.shields.io/badge/version-2.7.7-FF5A1F?style=flat-square)](https://github.com/Dvesiz/chronos/releases/tag/v2.7.7)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://github.com/Dvesiz/chronos/releases/latest)
+[![Pages](https://img.shields.io/github/actions/workflow/status/Dvesiz/chronos/pages.yml?branch=main&label=GitHub%20Pages&style=flat-square)](https://github.com/Dvesiz/chronos/actions/workflows/pages.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/Dvesiz/chronos/release.yml?branch=main&label=release&style=flat-square)](https://github.com/Dvesiz/chronos/actions/workflows/release.yml)
+[![License](https://img.shields.io/github/license/Dvesiz/chronos?style=flat-square)](LICENSE)
 
 </div>
 
----
+<div align="center">
 
-## 设计哲学
+<img src="docs/img/home.png" width="31%" alt="Chronos 今日计划" />
+<img src="docs/img/focus.png" width="31%" alt="Chronos 番茄钟" />
+<img src="docs/img/stats.png" width="31%" alt="Chronos 数据统计" />
 
-备考、写论文、准备答辩，任何需要长期投入的目标，每一天都高度相似：相似的任务、相似的时段、相似的坚持。
-**时序** 不做待办清单，而是把一天切成清晰的时段 ——
-你只需要知道两件事：**现在该做什么，以及这一段做得怎么样。**
+</div>
 
-> **计划（Plan）→ 专注（Focus）→ 复盘（Review）**，每一天自动闭环。
+## 产品定位
 
-## 功能特性
+Chronos 不只是一个待办清单。它把一天组织成可执行的时间段，让计划、专注、记录与复盘形成连续闭环：
 
-### 📅 每日计划
-- **模板驱动** —— 配置一次作息模板（如 08:00 背单词 / 10:00 阅读 / 14:00 项目时间…），每天自动生成日程
-- **弹性调整** —— 临时有事？支持**延后 10 分钟 / 缩短 15 分钟 / 拆分任务 / 跳过**，一键应对
-- **完成态补时** —— 标记完成后发现还没学完？点「继续」在已累计时长上继续计时
-- **随时增删** —— 今日计划与每日模板均可新增、编辑、删除（删除带二次确认防误触）
-- **遗留顺延** —— 没做完的任务不会凭空消失，第二天在计划卡里提示，可一键排进今天的空档
-- **每日一句复盘** —— 晚上写一句话记下当天状态，周末自动汇总
-- **每日打卡动效** —— 当天计划全部完成（完成或跳过）后弹出一张打卡卡：进度环填满、打勾、彩带与印章，可分享成果；每天只触发一次
+```text
+计划 Plan  ->  专注 Focus  ->  记录 Track  ->  复盘 Review
+```
 
-### 🍅 沉浸专注
-- **番茄钟** —— 经典 25/5 倒计时，也支持**正计时**（从 00:00 累加、不限时长，随时结束计入当天）；可自定义时长，支持自动衔接休息
-- **极简专注界面** —— 开始番茄后铺满整屏：只剩时间、一句话和暂停 / 退出，入场逐层浮起，每 45 秒换一句
-- **任务计时** —— 独立于番茄钟的纯专注计时，暂停 / 恢复 / 累计都在
-- **首页速启** —— 进行中的橙色卡片里直接开始 / 暂停当前任务，一键开关沉浸
-- **极度沉浸** —— 借「使用情况访问 + 悬浮窗」识别前台应用，切走即被全屏遮罩盖住（可一键回到 Chronos，长按 3 秒放弃本轮）
-  - 番茄钟与任务计时都生效，到点由前台服务发结束通知，息屏也不丢
-  - 闹钟 / 来电 / 紧急呼叫 / 授权弹窗自动放行
+应用坚持三个原则：
 
-### 📊 数据统计
-- **7 / 30 天**专注时长柱状趋势
-- **类别分布** —— 学习 / 工作 / 阅读 / 运动等各项投入一目了然
-- **打卡日历** —— 月视图里同时看打卡与投入强度，点某一天能翻到当天的完成情况与复盘
-- **完成率报告** —— 计划 vs 实际，诚实面对每一天
-- **周报** —— 一键生成本周总结（投入、完成率、最高一天、复盘），可直接分享
-- **周目标与里程碑** —— 本周目标进度条，累计 10 / 50 / 100 小时、连续 7 / 30 天、番茄数等成就
+- **本地优先**：不登录也能完整使用，网络不可用时不阻断计划、计时和统计。
+- **低干扰**：界面只呈现完成当前时段所需要的信息，复杂能力在需要时出现。
+- **长期可见**：保留每日投入、完成率、打卡、复盘和目标进度，让坚持有据可查。
 
-### ☁️ 账号与多设备同步（可选）
-- **邮箱验证码登录** —— 无需密码；验证码 10 分钟有效、限次校验，登录态自动续期
-- **多设备同步** —— 登录后计划、计时、统计与复盘在安卓端和网页端之间自动双向同步（约 5 秒一轮）
-- **本地优先** —— 不登录或不联网时一切照常；同步失败不影响本地使用，恢复网络后自动补上
-- **资料与反馈** —— 昵称、头像同步；应用内可直接提交反馈与检查新版本
-- **账号可控** —— 随时退出登录或删除账号与云端数据；JSON 导入导出始终保留
+## 核心体验
 
-### 🔔 系统级体验
-- **提醒通知** —— AlarmManager 精准到分钟的时段提醒，支持提前量设置，重启后自动重建
-- **通知操作** —— 「开始专注」「稍后提醒」直接在通知栏完成，不用打开 App
-- **桌面小组件** —— 2×2 显示今日进度、下一项任务与倒计时，点一下直接开始专注
-- **目标日倒计时** —— 首页显示「距×× N 天」，考试、答辩、项目截止都能用，名称与日期可自定义
-- **数据备份** —— 保存为 JSON 文件 / 导入恢复；导入会覆盖当前数据，并先在本机留一份备份（云同步之外的最后一道保险）
-- **深色模式** —— 一键切换 / 跟随系统
-- **平板适配** —— 双栏布局、横屏优化、大屏等比放大，手机到平板一套代码
+### 每日计划
 
-## 关于数据与账户
+- 用每日模板一次配置作息，自动生成当天时间轴。
+- 支持延后、缩短、拆分、跳过、继续补时和临时增删。
+- 未完成任务会在次日提示，可一键排入当天空档。
+- 计划全部完成或跳过后显示每日打卡卡片，记录完成时段、专注时长和连续天数。
 
-这是一个**以本地为主**的应用：未登录或网络不可用时，学习数据和账户资料仍保存在本机，计划、计时、统计和 JSON 导入导出继续可用；登录后可启用个人多设备同步。当前发布 APK 与在线体验版已预置 Cloudflare Worker API 地址，云端后端代码位于 [`backend/`](backend/)。
+### 沉浸专注
 
-云端登录使用邮箱验证码，数据同步采用本地事件队列、服务器接收顺序覆盖和定期拉取；本地 JSON 导入导出始终保留。API 密钥只放在 Worker Secret，不进入前端、APK 或仓库。
+- 番茄钟支持倒计时和正计时两种模式，可自定义时长并自动衔接休息。
+- 任务计时独立于番茄钟，支持暂停、恢复和累计。
+- 极简专注界面只保留时间、当前任务和必要操作。
+- Android 极度沉浸模式可识别前台应用，离开 Chronos 时显示遮罩；闹钟、来电、紧急呼叫和授权弹窗会被放行。
 
-- 学习数据存在 `localStorage`，并同步一份到 `SharedPreferences`（双保险，用于 WebView 存储被清时恢复）
-- 未配置后端时，「账户」仍是本机资料；配置后邮箱验证码才是真实鉴权
-- 卸载应用会一并清掉本地数据，需要保留请先用「导出学习数据」；换机时在设置里「导入学习数据」即可恢复
+### 数据统计
 
-## 快速开始
+- 7 天和 30 天投入趋势、类别分布、完成率和计划对比。
+- 月度打卡日历，结合当天投入强度查看长期节奏。
+- 每日一句复盘、一键生成周报并分享。
+- 周目标、连续天数、累计时长和番茄数等里程碑。
 
-### 方式一：直接安装
+### Android 系统能力
 
-前往 [Releases](../../releases) 下载最新 APK，安装即可（Android 8.0+，无需任何权限以外的配置）。
+- 精确到分钟的时段提醒，重启和时区变化后自动重建。
+- 通知栏直接开始专注或稍后提醒。
+- 2×2 桌面小组件显示今日进度、下一项任务和倒计时。
+- 考试、答辩或项目截止日倒计时。
+- 深色模式、横屏布局、安全区域和手机到平板的响应式适配。
 
-### 方式二：从源码构建
+## 平台能力
+
+| 能力 | Android APK | 浏览器在线版 |
+|:---|:---:|:---:|
+| 计划、模板、专注、统计、打卡、复盘 | 支持 | 支持 |
+| JSON 导入 / 导出 | 支持 | 支持 |
+| 本地优先存储 | 支持 | 支持 |
+| 邮箱登录与多设备同步 | 可选 | 可选 |
+| 系统通知与精确提醒 | 支持 | 浏览器限制 |
+| 桌面小组件 | 支持 | 不适用 |
+| 极度沉浸与前台服务 | 支持 | 不适用 |
+
+浏览器版直接复用 APK 的静态界面与核心逻辑，适合快速体验和跨设备使用。需要系统通知、精确闹钟、桌面小组件或极度沉浸时，请安装 Android APK。
+
+## 下载与体验
+
+### Android APK
+
+[下载 Chronos 2.7.7](https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.7.apk) · [查看全部 Releases](https://github.com/Dvesiz/chronos/releases)
+
+Android 8.0 及以上可用。APK 不依赖 Gradle，安装后即可使用。首次从文件安装时，按系统提示允许当前文件管理器安装未知来源应用即可。
+
+### 在线体验
+
+[打开在线体验版](https://dvesiz.github.io/chronos/app/) · [打开产品官网](https://dvesiz.github.io/chronos/)
+
+在线版的数据保存在当前浏览器中。清理浏览器站点数据前，请先使用应用内的「导出学习数据」保存 JSON 文件。
+
+## 数据安全与同步
+
+### 本地存储
+
+Chronos 的业务状态以 IndexedDB 为主存储，数据库名为 `chronos-state-v1`。浏览器不支持 IndexedDB 或写入失败时，自动回退到 `localStorage`；Android 端还保留原生桥接备份。状态加载和保存都经过 schema migration，当前业务 schema 为 v3。
+
+应用内的 JSON 导入导出始终可用。导入会覆盖当前业务状态，但在覆盖前会留存本机备份；卸载应用会清除本地数据，换机前请先导出。
+
+### 可选云同步
+
+登录邮箱验证码后，Chronos 可通过 Cloudflare Worker + D1 在 Android 和网页端同步计划、计时、统计与复盘。同步协议的关键保证包括：
+
+- **账号作用域隔离**：事件、队列和云端文档绑定当前账号，切换账号不会串数据。
+- **IndexedDB Outbox**：待同步事件写入独立的 `chronos-sync-v1` 队列，并保留 `localStorage` 兼容回退。
+- **revision 与幂等账本**：服务端使用版本检查和事件幂等键，避免并发提交重复落库。
+- **删除墓碑**：删除任务等实体会留下 tombstone，防止其他设备把已删除数据重新带回。
+- **设备游标与安全归档**：设备确认同步游标后，服务端按活跃设备的最小确认位置归档旧事件。
+- **快照与校验**：服务端维护带 revision、schema version 和 checksum 的快照，客户端可重新拉取并校验。
+- **批量逐事件结果**：一次提交会返回每个事件的 accepted、conflict 或 rejected 状态，冲突事件保留在本地供处理。
+- **网络恢复**：请求超时或断网时按 2 / 4 / 8 / 16 / 32 秒退避重试，不影响离线使用。
+
+同步是可选能力。未登录、未配置 API 或网络不可用时，本地计划、计时、统计和 JSON 备份仍可正常工作。API 密钥只保存在 Worker Secret，不进入前端、APK 或仓库。
+
+## 从源码开始
+
+### 环境要求
+
+- JDK 11 或更高版本；GitHub Actions 使用 JDK 17。
+- Android SDK Platform 35。
+- Android Build-Tools 35.0.0。
+- Git Bash、WSL 或其他能运行 `build.sh` 的 Bash 环境。
+- Node.js 运行测试和 Worker，本地部署依赖 Wrangler。
+
+### 构建 APK
 
 ```bash
 git clone https://github.com/Dvesiz/chronos.git
@@ -129,117 +146,88 @@ cd chronos
 ./build.sh
 ```
 
-产物：`build/Chronos-x.x.x.apk`（自动签名，直接安装）
+构建产物为 `build/Chronos-x.x.x.apk`。版本号只从 `app/src/main/AndroidManifest.xml` 的 `versionName` 读取，并在构建时同步到前端配置。
 
-<details>
-<summary><b>构建依赖</b>（点击展开）</summary>
-
-| 依赖 | 版本 |
-|:---|:---|
-| JDK | 11+ |
-| Android SDK Build-Tools | 35.0.0 |
-| Android SDK Platform | android-35 |
-| jar / keytool | 随 JDK |
-
-将两者解压至 `/opt/android-sdk/build-tools/35.0.0` 与 `/opt/android-sdk/platforms/android-35`（或修改 `build.sh` 开头的路径变量）。
-
-首次构建会自动生成签名密钥 `keystore.jks` 与口令文件 `keystore.properties`（两者均不入库）。
-口令也可以用环境变量覆盖：`CHRONOS_KS_PASS=xxx ./build.sh`。
-换机器构建时请把这两个文件一起带走 —— 用新密钥签出的 APK 无法覆盖安装旧版本；
-若只有 `keystore.jks` 而缺 `keystore.properties`，构建会直接报错，不会另生成新钥。
-</details>
-
-### 方式三：打 tag 自动发版（CI）
-
-推一个 `v*` 标签，GitHub Actions 会自动构建签名 APK 并上传到对应 Release，不需要本地操作：
+默认 SDK 路径为 `/opt/android-sdk`，也可以按需设置：
 
 ```bash
-# 先把 AndroidManifest.xml 的 versionName 改成目标版本
-git tag v2.8.0 && git push origin v2.8.0
+ANDROID_SDK=/path/to/android-sdk \
+ANDROID_BUILD_TOOLS=/path/to/build-tools/35.0.0 \
+ANDROID_JAR=/path/to/platforms/android-35/android.jar \
+./build.sh
 ```
 
-工作流会依次执行：**校验 tag 与 manifest 版本一致 → 跑全量测试 → 构建签名 APK → 上传 Release**。
-版本号只认 `AndroidManifest.xml` 一处，`build.sh` 打包时会把它同步进前端的 `cloud-config.js`。
+首次构建会生成本地 `keystore.jks` 和 `keystore.properties`，两者不会入库。升级现有 APK 时必须继续使用同一签名密钥。
 
-> 首次使用需在仓库 **Settings → Secrets and variables → Actions** 配置三个 secret：
->
-> | Secret | 内容 |
-> |:---|:---|
-> | `CHRONOS_KEYSTORE_B64` | 签名库的 base64：`base64 -w0 keystore.jks` |
-> | `CHRONOS_STORE_PASSWORD` | `keystore.properties` 里的 `storePassword` |
-> | `CHRONOS_KEY_PASSWORD` | `keystore.properties` 里的 `keyPassword` |
->
-> 换签名密钥会导致已安装的旧版本无法覆盖升级，务必用同一份 `keystore.jks`。
+### 运行测试
 
-## 技术架构
-
-这个项目刻意做了一些**反潮流**的选择：
-
-- **无 Gradle** —— 整个构建是不到 100 行的 `build.sh`：`aapt2 → javac → d8 → zipalign → apksigner`，一条链路，全透明
-- **零依赖** —— 不用 React / Flutter / Compose，原生 `Java + WebView`，APK 约 100 KB
-- **双保险持久化** —— `localStorage`（前端）与 `SharedPreferences`（原生）互为备份，WebView 存储被清也能恢复（卸载仍会清除，需自行导出）
-- **时间戳驱动计时** —— 计时基于 `Date.now()` 差值而非 setInterval 累加，杀进程也不丢秒数
-
+```bash
+cd backend
+npm ci
+npm run test:all
 ```
+
+测试覆盖前端状态迁移、主状态 IndexedDB、Outbox、Web Locks、多标签页同步、时间与统计逻辑，以及 Worker 的 revision、幂等、冲突、删除墓碑、设备游标和归档协议。
+
+### 本地运行 Worker
+
+```bash
+cd backend
+npm run dev
+```
+
+数据库迁移和部署命令见 [`backend/README.md`](backend/README.md)。生产发布使用 GitHub Actions：推送与 `AndroidManifest.xml` 版本一致的 `v*` tag 后，工作流会执行测试、构建签名 APK 并上传 GitHub Release。
+
+## 技术结构
+
+```text
 chronos/
 ├── app/src/main/
-│   ├── AndroidManifest.xml
-│   ├── assets/www/                   # 前端：无框架，纯 HTML/CSS/JS
-│   │   ├── index.html
-│   │   ├── styles.css                #   响应式 + CSS 变量主题系统
-│   │   ├── app.js                    #   状态机：计划 / 计时 / 统计
-│   │   ├── cloud-sync.js             #   可选 Worker 账号与多设备同步
-│   │   ├── cloud-config.js            #   发布环境 API 地址
-│   │   └── browser-adapter.js         #   浏览器体验版降级适配
+│   ├── assets/www/                 # 无框架 HTML / CSS / JavaScript 核心应用
+│   │   ├── app.js                  # 状态机、计划、计时、统计和页面交互
+│   │   ├── cloud-sync.js           # 可选账号与多设备同步客户端
+│   │   ├── browser-adapter.js      # 浏览器在线版适配
+│   │   └── cloud-config.js         # 发布环境 API 配置
 │   ├── java/com/dvesiz/chronos/
-│   │   ├── MainActivity.java         # WebView 宿主 + JS 桥 + Edge-to-edge
-│   │   ├── AlarmScheduler.java       # AlarmManager 提醒调度（全量重建 / 错过补发）
-│   │   ├── ReminderReceiver.java     # 到点触发通知、通知「完成」回写
-│   │   ├── NotificationHelper.java   # 通知渠道与操作按钮
-│   │   ├── FocusGuardService.java    # 极度沉浸：前台服务 + 前台应用识别 + 遮罩
-│   │   ├── LockPanel.java            # 锁定面板（全屏遮罩 UI）
-│   │   ├── ChronosWidgetProvider.java # 2×2 桌面小组件（RemoteViews）
-│   │   └── BootReceiver.java         # 开机 / 改时区后重建全部提醒
-│   └── res/                          # 自适应图标 / 主题资源 / 小组件布局
-├── backend/                          # Cloudflare Worker + D1 API
-├── site/                             # 官网源码
-├── tests/                            # 前端逻辑与同步测试
-├── build.sh                          # 一键构建：aapt2 + javac + d8 + apksigner
-├── docs/img/                         # README 截图与 Logo
+│   │   ├── MainActivity.java       # WebView 宿主、JS 桥和 edge-to-edge
+│   │   ├── AlarmScheduler.java     # 提醒调度与错过补发
+│   │   ├── ReminderReceiver.java   # 到点通知与通知操作
+│   │   ├── FocusGuardService.java  # 极度沉浸前台服务
+│   │   ├── ChronosWidgetProvider.java # 2×2 桌面小组件
+│   │   └── BootReceiver.java       # 开机与时区变化后的提醒重建
+│   └── res/                        # 图标、主题、通知和小组件资源
+├── backend/                        # Cloudflare Worker + D1 API 与迁移
+├── site/                           # 产品官网
+├── tests/                          # 前端、同步协议和浏览器 E2E 测试
+├── build.sh                        # aapt2 → javac → d8 → zipalign → apksigner
+├── docs/img/                       # README 截图与品牌资源
 └── LICENSE
 ```
 
-## 版本历史
+项目刻意保持轻量：原生 Java + WebView、无 Gradle、前端无 React / Flutter / Compose，构建链路透明，核心业务逻辑可以在浏览器和 APK 之间复用。
 
-| 版本 | 内容 |
+## 版本记录
+
+| 版本 | 主要变化 |
 |:---|:---|
-| **2.7.7** | 番茄钟新增「正计时」：从 00:00 起累加、不限时长，随时结束并计入当天；倒计时与正计时一键切换 |
-| **2.7.0** | 接入 Cloudflare Worker + D1 的邮箱验证码账号、个人多设备同步、反馈通知与版本检查；修复 APK 首次登录后不再持续同步的问题，并为 token 刷新补齐超时保护 |
-| **2.6.7** | 导出改为系统「保存为」JSON 文件，不再导出文本分享；统计页重排，打卡日历移至顶端，月历旁新增打卡天数、投入时长、完成率与连续天数概览 |
-| **2.6.7-web** | 新增 GitHub Pages 在线体验版：复用 APK 的静态界面和逻辑，浏览器本地保存数据，支持 JSON 文件下载与导入，系统级 Android 能力显示为浏览器说明 |
-| **2.6.6** | 新增「导入学习数据」：从导出的 JSON 恢复（导入前本机留备份，覆盖前二次确认）；统计页把 30 天热力图换成「打卡日历」——月视图同时显示打卡与投入强度，可翻月、点某天看当天完成情况与复盘 |
-| **2.6.5** | 每日打卡动效：当天计划全部完成（完成或跳过）后弹出打卡卡——进度环填满、打勾、彩带 + 印章动效，显示完成时段 / 专注时长 / 连续天数，可分享；每天只触发一次，设置里关掉动效则静态展示 |
-| **2.6.4** | 统计页重排：去掉与总结重复的「深度分析」和与番茄页重复的「番茄趋势」，平板横屏改为 6 列栅格（3+3 / 4+2 / 2+4），不再留空洞；考试倒计时从星期下面移到「今日安排」上方，改成大号数字卡片；修复番茄钟「当前任务」一直停在旧任务的问题（空闲时跟随当前时段，重置 / 删除任务会解绑） |
-| **2.6.3** | 新功能：未完成任务次日遗留提示与一键顺延；每日一句复盘 + 一键生成周报分享；首页考试倒计时；本周目标进度与里程碑（累计时长 / 连续天数 / 番茄数）；2×2 桌面小组件（今日进度、下一项、倒计时、一键开始） |
-| **2.6.2** | 首页布局重排：「今日安排」标题收进卡片，平板两列卡片对齐同一条基线，卡片内边距与间距统一；小屏压缩进度卡，首屏就能看到今日安排。修复 Windows 版 aapt2 把 assets 写成反斜杠、WebView 报 `ERR_FILE_NOT_FOUND` 的问题（改用 jar 打包 assets） |
-| **2.6.1** | 省电与流畅：息屏时暂停前台应用轮询；番茄页 / 统计页改为切页时按需渲染；闹钟按签名去重，不再每次保存全量重建。修复：键盘遮挡弹层表单、返回键直达退出、跨天未停的计时无限累加、跳过 / 删除任务不停表、完成态补时暂停后退回待开始、番茄与任务计时对同一任务重复计时、详情页日均口径不一致 |
-| **2.6.0** | 番茄钟加入极简专注界面（全屏计时 + 激励语）；首页橙色卡片内置换开沉浸开关；首页移除番茄钟迷你卡；导航「专注」更名「番茄钟」 |
-| **2.5.3** | 重绘通知 / 状态栏小图标：环占满 24dp、缺口收到 45°，状态栏下不再糊成一个「C」 |
-| **2.5.2** | 文档：界面截图改用平板（820×1093）布局；修复「今日」柱状被内联渐变覆盖导致高亮失效 |
-| **2.5.1** | 修复通知「完成」失效 / 「延后」不生效 / 重启后提醒复活；极度沉浸补闹钟与来电放行、到点通知、轮询下沉后台线程；统计口径与时长记录更诚实 |
-| **2.5.0** | 极度沉浸（系统级拦截）、本机账户与头像、卡片详情、示例模板瘦身 |
-| **2.2.1** | 修复：完成态任务可「继续」补时计时，累计时长不再丢失 |
-| **2.1.0** | 全新 Logo（进度环 × 当下时刻）；今日计划 / 每日模板支持删除 |
-| **2.0.0** | 视觉全面重做：明亮极简设计语言，活力橙主色，iOS 质感控件 |
-| **1.1.0** | 平板双栏适配；番茄钟；数据统计（趋势 / 分布 / 热力图） |
-| **1.0.0** | 首个版本：模板日程、时间轴、专注计时、系统提醒 |
+| **2.7.7** | 番茄钟加入正计时；完成平板设置页布局、安全区域和系统 inset 修复；同步状态 schema v3 与本地持久化收口。 |
+| **2.7.0** | 接入 Cloudflare Worker + D1 邮箱验证码账号、多设备同步、反馈和版本检查；补齐 token 刷新超时保护。 |
+| **2.6.x** | 完成在线体验版、数据导入导出、打卡卡片、复盘周报、目标与里程碑、桌面小组件、统计页和极度沉浸体验。 |
+| **2.0.0** | 完成视觉系统重做，建立明亮极简设计语言与活力橙品牌色。 |
+| **1.0.0** | 首个版本：模板日程、时间轴、专注计时和系统提醒。 |
+
+## 参与贡献
+
+欢迎通过 [Issue](https://github.com/Dvesiz/chronos/issues) 报告问题、提出建议，或提交 Pull Request。提交代码前请先运行 `cd backend && npm run test:all`，涉及界面时请同时验证手机和平板布局。
 
 ## 许可证
 
-[MIT](LICENSE) —— 学习、修改、分发均随意，欢迎 Star ⭐
+Chronos 采用 [MIT License](LICENSE)。你可以自由学习、修改和分发，欢迎 Star、Issue 与 Pull Request。
 
 <div align="center">
 
-**时序 · Chronos** —— 让每一段时间，都有明确的方向
+**时序 · Chronos**
+
+把今天安排好，把长期坚持留下来。
 
 </div>
