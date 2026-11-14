@@ -1,0 +1,10 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const SERVER = fs.readFileSync('backend/src/index.js', 'utf8');
+const MIGRATION = fs.readFileSync('backend/migrations/0006_sync_devices.sql', 'utf8');
+assert.match(SERVER, /MIN\(acknowledged_seq\)/i, 'archive threshold must use slowest active device cursor');
+assert.match(SERVER, /revoked_at IS NULL/, 'revoked devices must not block archive');
+assert.match(SERVER, /archiveThrough/, 'archive must cap deletion by slowest active device');
+assert.match(SERVER, /server_seq<=\?/,'archive must delete only through the safe cursor');
+assert.match(MIGRATION, /revoked_at/);
+console.log('✓ sync archive：按所有活跃设备最小 ack 游标安全归档');

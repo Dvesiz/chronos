@@ -4,6 +4,8 @@ import { requireConfig } from './config.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const MAX_BODY = 1024 * 1024;
+const PROTOCOL_VERSION = 2;
+const SCHEMA_VERSION = 3;
 /** 每个用户保留的事件日志条数；更早的会被裁剪，快照才是真相来源 */
 const MAX_EVENTS_PER_USER = 500;
 const CODE_TTL = 10 * 60 * 1000;
@@ -207,7 +209,7 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
     const nextState = applyOps(state, event.ops, deleteEntities);
     if (!validateStateSize(nextState)) throw new Error('state_too_large');
     const duplicate = await env.DB.prepare('SELECT server_seq FROM sync_events WHERE user_id=? AND event_id=?').bind(user.id, event.eventId).first();
-    if (duplicate) return { state, headSeq: document.head_seq, serverSeq: duplicate.server_seq, duplicate: true };
+    if (duplicate) return { state, headSeq: document.head_seq, revision, serverSeq: duplicate.server_seq, duplicate: true };
     const createdAt = now();
     const serverSeq = Number(document.head_seq || 0) + 1;
     try {
@@ -219,19 +221,34 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
           .bind(user.id, event.eventId, event.deviceId, serverSeq, nextRevision, payloadHash, createdAt, user.id, document.head_seq, revision),
         ...deleteEntities.map(entity => env.DB.prepare('INSERT INTO sync_tombstones (user_id,entity_type,entity_id,delete_revision,device_id,deleted_at) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id,entity_type,entity_id) DO UPDATE SET delete_revision=excluded.delete_revision,device_id=excluded.device_id,deleted_at=excluded.deleted_at')
           .bind(user.id, entity.entityType || 'task', entity.entityId, nextRevision, event.deviceId, createdAt)),
-        env.DB.prepare('UPDATE sync_documents SET state_json=?,head_seq=?,revision=?,updated_at=? WHERE user_id=? AND head_seq=? AND revision=?')
-          .bind(JSON.stringify(nextState), serverSeq, nextRevision, createdAt, user.id, document.head_seq, revision)
+        env.DB.prepare('UPDATE sync_documents SET state_json=?,head_seq=?,revision=?,schema_version=?,updated_at=? WHERE user_id=? AND head_seq=? AND revision=?')
+          .bind(JSON.stringify(nextState), serverSeq, nextRevision, SCHEMA_VERSION, createdAt, user.id, document.head_seq, revision)
       ]);
       const ledgerIndex = 1;
       const documentUpdateIndex = 2 + deleteEntities.length;
       if (batch[0].meta.changes !== 1 || batch[ledgerIndex].meta.changes !== 1 || batch[documentUpdateIndex].meta.changes !== 1) continue;
-      // 事件日志只用于「客户端增量拉取」，不是真相来源（sync_documents 才是）。
-      // 每写一条就顺手裁掉超出上限的旧日志，否则 D1 会无限膨胀。
       try {
-        await env.DB.prepare('DELETE FROM sync_events WHERE user_id=? AND server_seq<=?')
-          .bind(user.id, serverSeq - MAX_EVENTS_PER_USER).run();
+        const snapshotJson = JSON.stringify(nextState);
+        await env.DB.prepare('INSERT OR REPLACE INTO sync_snapshots (user_id,revision,head_seq,schema_version,checksum,state_json,created_at) VALUES (?,?,?,?,?,?,?)')
+          .bind(user.id, nextRevision, serverSeq, SCHEMA_VERSION, await sha256(snapshotJson), snapshotJson, createdAt).run();
+        await env.DB.prepare('DELETE FROM sync_snapshots WHERE user_id=? AND revision < ?').bind(user.id, Math.max(0, nextRevision - 20)).run();
+      } catch (snapshotError) {
+        /* Snapshot history is a recovery aid; a failed write must not roll back the sync commit. */
+      }
+      // 事件日志只用于「客户端增量拉取」，不是真相来源（sync_documents 才是）。
+      // 只有所有活跃设备都确认过的事件才允许归档；没有设备游标时宁可不删。
+      try {
+        const cursor = await env.DB.prepare('SELECT MIN(acknowledged_seq) AS min_ack FROM sync_devices WHERE user_id=? AND revoked_at IS NULL').bind(user.id).first();
+        const minAck = Number(cursor?.min_ack);
+        if (Number.isSafeInteger(minAck) && minAck > 0) {
+          const retentionFloor = Math.max(0, serverSeq - MAX_EVENTS_PER_USER);
+          const archiveThrough = Math.min(minAck, retentionFloor);
+          if (archiveThrough > 0) {
+            await env.DB.prepare('DELETE FROM sync_events WHERE user_id=? AND server_seq<=?').bind(user.id, archiveThrough).run();
+          }
+        }
       } catch (pruneErr) {
-        /* 裁剪失败不影响本次同步写入 */
+        /* 归档失败不影响本次同步写入 */
       }
       return { state: nextState, headSeq: serverSeq, revision: nextRevision, serverSeq, duplicate: false };
     } catch (err) {
@@ -245,6 +262,15 @@ async function syncEvents(request, env, user) {
   const data = await bodyJson(request);
   const events = Array.isArray(data.events) ? data.events : [];
   if (events.length > 50) return error('events_too_many', 400);
+  if (data.protocolVersion !== undefined && Number(data.protocolVersion) !== PROTOCOL_VERSION) {
+    return error('protocol_unsupported', 426, '客户端同步协议版本不受支持');
+  }
+  if (data.schemaVersion !== undefined && Number(data.schemaVersion) > SCHEMA_VERSION) {
+    return error('schema_unsupported', 409, '客户端数据版本高于服务端');
+  }
+  if (data.accountScope !== undefined && String(data.accountScope) !== String(user.id)) {
+    return error('account_scope_mismatch', 403, '账号作用域不匹配');
+  }
   const accepted = [];
   const results = [];
   let state = compactState(DEFAULT_STATE);
@@ -259,7 +285,14 @@ async function syncEvents(request, env, user) {
   }
   for (const event of events) {
     const checked = validateEvent(event);
-    if (!checked.ok) return error(checked.error, 400);
+    if (!checked.ok) {
+      results.push({ eventId: event?.eventId || null, status: 'rejected', error: checked.error });
+      break;
+    }
+    if (event.accountScope !== undefined && String(event.accountScope) !== String(user.id)) {
+      results.push({ eventId: event.eventId, status: 'rejected', error: 'account_scope_mismatch' });
+      break;
+    }
     try {
       const result = await appendEventWithCas(env, user, event, revision);
       state = result.state;
@@ -269,17 +302,21 @@ async function syncEvents(request, env, user) {
       results.push(resultRow);
       accepted.push({ eventId: event.eventId, serverSeq: result.serverSeq, revision, duplicate: result.duplicate });
     } catch (err) {
-      if (err?.message === 'state_too_large') return error('state_too_large', 413);
-      if (err?.message === 'replace_forbidden') return error('replace_forbidden', 409, '云端已有数据，不允许整份覆盖；请拉取云端后重试');
-      if (err?.message === 'stale_revision') return json({ error: 'stale_revision', message: '云端版本已更新，请先拉取并合并', currentRevision: err.currentRevision }, 409);
-      if (err?.message === 'idempotency_key_reused') return error('idempotency_key_reused', 409, 'eventId 已被不同内容使用，已拒绝重复提交');
-      if (err?.message === 'sync_conflict') return error('sync_conflict', 409, '云端正在同步，请稍后重试');
+      const errorCode = err?.message === 'state_too_large' ? 'state_too_large'
+        : err?.message === 'replace_forbidden' ? 'replace_forbidden'
+        : err?.message === 'stale_revision' ? 'stale_revision'
+        : err?.message === 'idempotency_key_reused' ? 'idempotency_key_reused'
+        : err?.message === 'sync_conflict' ? 'sync_conflict' : null;
+      if (errorCode) {
+        results.push({ eventId: event.eventId, status: errorCode === 'replace_forbidden' ? 'conflict' : 'rejected', error: errorCode, currentRevision: err?.currentRevision });
+        break;
+      }
       throw err;
     }
   }
-  const document = await env.DB.prepare('SELECT state_json,head_seq FROM sync_documents WHERE user_id=?').bind(user.id).first();
+  const document = await env.DB.prepare('SELECT state_json,head_seq,revision FROM sync_documents WHERE user_id=?').bind(user.id).first();
   if (document) { state = JSON.parse(document.state_json); headSeq = document.head_seq; revision = document.revision ?? revision; }
-  return json({ ok: true, headSeq, revision, accepted, results, state });
+  return json({ ok: results.every(item => item.status === 'accepted'), headSeq, revision, accepted, results, state, protocolVersion: PROTOCOL_VERSION, schemaVersion: SCHEMA_VERSION });
 }
 
 async function syncSnapshot(env, user) {
@@ -290,11 +327,12 @@ async function syncSnapshot(env, user) {
   Object.values(state.days || {}).forEach(day => {
     if (Array.isArray(day.tasks)) day.tasks = day.tasks.filter(task => !deletedTasks.has(task.id) && !deletedTasks.has(task.templateId));
   });
-  return json({ state, headSeq: row?.head_seq || 0, revision: row?.revision || 0, tombstones: tombstones.results || [], updatedAt: row?.updated_at || null });
+  const checksum = await sha256(JSON.stringify(state));
+  return json({ state, headSeq: row?.head_seq || 0, revision: row?.revision || 0, tombstones: tombstones.results || [], updatedAt: row?.updated_at || null, checksum, protocolVersion: PROTOCOL_VERSION, schemaVersion: SCHEMA_VERSION });
 }
 async function syncHead(env, user) {
   const row = await env.DB.prepare('SELECT head_seq,revision,updated_at FROM sync_documents WHERE user_id=?').bind(user.id).first();
-  return json({ headSeq: row?.head_seq || 0, revision: row?.revision || 0, updatedAt: row?.updated_at || null });
+  return json({ headSeq: row?.head_seq || 0, revision: row?.revision || 0, updatedAt: row?.updated_at || null, protocolVersion: PROTOCOL_VERSION, schemaVersion: SCHEMA_VERSION });
 }
 async function syncAck(request, env, user) {
   const data = await bodyJson(request);

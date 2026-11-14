@@ -11,7 +11,10 @@
   var DEVICE_KEY = 'chronos.cloud.device.v1';
   var HEAD_KEY = 'chronos.cloud.head.v1';
   var REVISION_KEY = 'chronos.cloud.revision.v1';
+  var PROTOCOL_VERSION = 2;
+  var SCHEMA_VERSION = 3;
   var MAX_QUEUE = 100;
+  var RETRY_BACKOFF = [2000, 4000, 8000, 16000, 32000];
   var OUTBOX_DB = 'chronos-sync-v1';
   var outboxDbPromise = null;
   function openOutboxDb() {
@@ -69,7 +72,12 @@
     queuedState: null,
     queue: [],
     pulling: false,
-    pollTimer: null
+    pollTimer: null,
+    queueHydrated: false,
+    syncStatus: 'idle',
+    retryAttempt: 0,
+    retryTimer: null,
+    getLocalRevision: function () { return 0; }
   };
 
   function clone(value) {
@@ -102,6 +110,24 @@
     var id = localStorage.getItem(DEVICE_KEY);
     if (!id) { id = randomId(); try { localStorage.setItem(DEVICE_KEY, id); } catch (e) {} }
     return id;
+  }
+  function accountScope() {
+    var session = read(SESSION_KEY, null);
+    return session && session.user && (session.user.id || session.user.email)
+      ? String(session.user.id || session.user.email) : null;
+  }
+  function adoptQueueScope() {
+    var scope = accountScope();
+    if (!scope) return;
+    state.queue.forEach(function (event) {
+      if (event && !event.accountScope) event.accountScope = scope;
+    });
+  }
+  function eligibleQueue() {
+    var scope = accountScope();
+    return state.queue.filter(function (event) {
+      return event && event.accountScope === scope && event.status !== 'conflict' && event.status !== 'rejected';
+    });
   }
   function isObject(value) { return value && typeof value === 'object' && !Array.isArray(value); }
   /**
@@ -199,6 +225,11 @@
     return payload;
   }
 
+  function withWriteLock(work) {
+    var locks = global.navigator && global.navigator.locks;
+    if (!locks || typeof locks.request !== 'function') return work();
+    return locks.request('chronos-sync-write', { mode: 'exclusive' }, work);
+  }
   function persistQueue() { write(QUEUE_KEY, state.queue); persistQueueIndexedDb(); }
   function notifyTabs() { try { if (tabChannel) tabChannel.postMessage({ type: 'state-changed', at: Date.now() }); } catch (e) {} }
   if (tabChannel) tabChannel.onmessage = function (event) {
@@ -222,12 +253,15 @@
     // 只从最后一次服务端确认状态计算，不能以 queuedState 作为云端基线
     var merged = diff(base, state.get ? state.get() : base);
     var keep = state.queue.slice(-1)[0] || null;
+    var deleteEntities = mergeDeleteEntities(state.queue);
     state.queue = merged.length ? [{
       eventId: randomId(),
       deviceId: deviceId(),
+      accountScope: accountScope(),
       baseSeq: keep ? keep.baseSeq : headSeq(),
       baseRevision: revision(),
       ops: merged,
+      deleteEntities: deleteEntities,
       clientAt: Date.now()
     }] : [];
   }
@@ -235,6 +269,20 @@
   function setHeadSeq(value) { try { localStorage.setItem(HEAD_KEY, String(Math.max(0, Number(value) || 0))); } catch (e) {} }
   function revision() { return Number(localStorage.getItem(REVISION_KEY) || 0); }
   function setRevision(value) { try { localStorage.setItem(REVISION_KEY, String(Math.max(0, Number(value) || 0))); } catch (e) {} }
+  function mergeDeleteEntities(events) {
+    var seen = {};
+    var out = [];
+    (events || []).forEach(function (event) {
+      (event && event.deleteEntities || []).forEach(function (entity) {
+        if (!entity || !entity.entityType || !entity.entityId) return;
+        var key = String(entity.entityType) + ':' + String(entity.entityId);
+        if (seen[key]) return;
+        seen[key] = true;
+        out.push({ entityType: String(entity.entityType), entityId: String(entity.entityId) });
+      });
+    });
+    return out;
+  }
 
   /**
    * 云端要覆盖本地之前，先把本地快照留一份。
@@ -264,57 +312,78 @@
     state.apply(clone(next), true);
   }
   async function flush() {
-    if (!API_BASE || !state.loggedIn || state.syncing || !state.queue.length || state.queueHydrated === false) return;
+    var pending = eligibleQueue();
+    if (!API_BASE || !state.loggedIn || state.syncing || !pending.length || state.queueHydrated === false) return;
     state.syncing = true;
+    state.syncStatus = 'uploading';
     var uploaded = false;
     var retryAfterPull = false;
     try {
       var result = await request('/v1/sync/events', {
         method: 'POST', body: JSON.stringify({
+        protocolVersion: PROTOCOL_VERSION,
+        schemaVersion: SCHEMA_VERSION,
+        accountScope: accountScope(),
         baseRevision: revision(),
-        events: state.queue.slice(0, 20).map(function (event) {
-          return Object.assign({}, event, { baseRevision: revision(), deleteEntities: event.deleteEntities || [] });
+        events: pending.slice(0, 20).map(function (event) {
+          return Object.assign({}, event, { accountScope: accountScope(), baseRevision: revision(), deleteEntities: event.deleteEntities || [] });
         })
       })
       });
       var accepted = {};
       if (Array.isArray(result.results)) {
         result.results.forEach(function (item) {
-          if (item && item.status === 'accepted') accepted[item.eventId] = true;
+          if (!item) return;
+          if (item.status === 'accepted') accepted[item.eventId] = true;
+          if (item.status === 'conflict' || item.status === 'rejected') {
+            state.queue.forEach(function (event) {
+              if (event.eventId === item.eventId) { event.status = item.status; event.error = item.error || null; }
+            });
+          }
         });
       } else {
         (result.accepted || []).forEach(function (item) { accepted[item.eventId] = true; });
       }
-      state.queue = state.queue.filter(function (event) { return !accepted[event.eventId]; });
+      await withWriteLock(function () {
+        state.queue = state.queue.filter(function (event) { return !accepted[event.eventId]; });
+        persistQueue();
+        setHeadSeq(result.headSeq || headSeq());
+        setRevision(result.revision == null ? revision() : result.revision);
+        setAcknowledged(result.state || state.queuedState);
+        state.queuedState = clone(result.state || state.queuedState);
+      });
       if (result.headSeq != null && accepted && Object.keys(accepted).length) {
         request('/v1/sync/ack', { method: 'POST', body: JSON.stringify({ deviceId: deviceId(), ackServerSeq: result.headSeq, appVersion: APP_VERSION, protocolVersion: 2 }) }).catch(function () {});
       }
-      persistQueue();
-      setHeadSeq(result.headSeq || headSeq());
-      setRevision(result.revision == null ? revision() : result.revision);
-      setAcknowledged(result.state || state.queuedState);
-      state.queuedState = clone(result.state || state.queuedState);
       uploaded = true;
+      state.retryAttempt = 0;
+      state.syncStatus = state.queue.some(function (event) { return event.status === 'conflict' || event.status === 'rejected'; })
+        ? 'conflict' : (state.queue.length ? 'pending' : 'idle');
       notifyTabs();
     } catch (e) {
       // 服务端拒绝整份 replace：说明队列里是旧版逻辑留下的破坏性事件。
       // 直接丢弃这些事件并拉取云端，绝不再重试（否则会一直顶着云端状态）。
       if (e && e.code === 'stale_revision') {
+        state.syncStatus = 'recovery_required';
         retryAfterPull = true;
         return;
       }
       if (e && e.code === 'replace_forbidden') {
-        state.queue = state.queue.filter(function (event) {
-          return !(event.ops || []).some(function (op) {
+        state.queue.forEach(function (event) {
+          if (eligibleQueue().indexOf(event) >= 0 && (event.ops || []).some(function (op) {
             return op.op === 'replace' && (!op.path || op.path.length === 0);
-          });
+          })) event.status = 'conflict';
         });
         persistQueue();
-        state.syncing = false;
-        pullLatest();
+        state.syncStatus = 'conflict';
+        pullLatest(true);
         return;
       }
-      /* 其它错误：网络恢复后由下一次保存或 online 事件重试 */
+      state.syncStatus = e && (e.code === 'cloud_timeout' || e.code === 'cloud_network') ? 'retrying' : 'failed';
+      state.retryAttempt = Math.min(state.retryAttempt + 1, RETRY_BACKOFF.length - 1);
+      if (state.retryTimer) global.clearTimeout(state.retryTimer);
+      state.retryTimer = global.setTimeout(function () { state.retryTimer = null; flush(); }, RETRY_BACKOFF[state.retryAttempt]);
+      if (state.retryTimer && typeof state.retryTimer.unref === 'function') state.retryTimer.unref();
     } finally {
       state.syncing = false;
       if (retryAfterPull && state.loggedIn) pullLatest(true);
@@ -324,6 +393,8 @@
   async function pullLatest(forceSnapshot) {
     if (!API_BASE || !state.loggedIn || !state.booted || state.pulling || state.syncing) return;
     state.pulling = true;
+    state.syncStatus = 'pulling';
+    var localRevisionAtStart = Number(state.getLocalRevision() || 0);
     try {
       var head = await request('/v1/sync/head');
       if (state.syncing) return;
@@ -337,11 +408,19 @@
       setHeadSeq(remoteSeq);
       setRevision(remote.revision == null ? revision() : remote.revision);
       setAcknowledged(remote.state);
-      if (state.queue.length) {
+      if (remoteSeq >= 0) request('/v1/sync/ack', { method: 'POST', body: JSON.stringify({ deviceId: deviceId(), ackServerSeq: remoteSeq, appVersion: APP_VERSION, protocolVersion: PROTOCOL_VERSION }) }).catch(function () {});
+      if (Number(state.getLocalRevision() || 0) !== localRevisionAtStart && !state.queue.length) {
+        var raced = diff(remote.state, state.get());
+        if (raced.length) state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: raced, deleteEntities: collectDeletedEntities(remote.state, state.get()), clientAt: Date.now() });
+        state.queuedState = clone(state.get());
+        persistQueue();
+        state.syncStatus = 'pending';
+        flush();
+      } else if (state.queue.length) {
         var merged = clone(remote.state);
-        state.queue.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
+        eligibleQueue().forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
         var rebasedOps = diff(remote.state, merged);
-        state.queue = rebasedOps.length ? [{ eventId: randomId(), deviceId: deviceId(), baseSeq: remoteSeq, baseRevision: revision(), ops: rebasedOps, clientAt: Date.now() }] : [];
+        state.queue = rebasedOps.length ? [{ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: rebasedOps, deleteEntities: mergeDeleteEntities(eligibleQueue()), clientAt: Date.now() }] : [];
         state.queuedState = clone(merged);
         persistQueue();
         applyRemote(merged, 'rebase');
@@ -349,8 +428,9 @@
       } else {
         applyRemote(remote.state, 'poll');
       }
+      state.syncStatus = state.queue.length ? 'pending' : 'idle';
     } catch (e) {
-      /* Keep local state and retry on the next poll, resume, or online event. */
+      state.syncStatus = e && (e.code === 'cloud_timeout' || e.code === 'cloud_network') ? 'retrying' : 'failed';
     } finally {
       state.pulling = false;
     }
@@ -388,12 +468,19 @@
    *                  否则什么都不做。
    */
   function rebaseQueue(remoteState, remoteSeq) {
+    if (remoteSeq > 0 && state.queue.some(function (event) {
+      return (event.ops || []).some(function (op) { return op.op === 'replace' && (!op.path || !op.path.length); });
+    })) {
+      state.syncStatus = 'conflict';
+      persistQueue();
+      return state.get();
+    }
     var merged = clone(remoteState) || {};
     state.queue.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
     var rebasedOps = diff(remoteState, merged);
     state.queue = rebasedOps.length ? [{
-      eventId: randomId(), deviceId: deviceId(), baseSeq: remoteSeq, baseRevision: revision(),
-      ops: rebasedOps, clientAt: Date.now()
+      eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(),
+      ops: rebasedOps, deleteEntities: mergeDeleteEntities(eligibleQueue()), clientAt: Date.now()
     }] : [];
     state.queuedState = clone(merged);
     persistQueue();
@@ -427,9 +514,9 @@
       (localState.reviews && Object.keys(localState.reviews).length) ||
       (localState.template && localState.template.length)
     ));
-    state.queue = [];
-    if (hasLocal) {
-      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: 0, baseRevision: revision(), ops: [{ op: 'replace', path: [], value: clone(localState) }], clientAt: Date.now() });
+    var pending = eligibleQueue();
+    if (!pending.length && hasLocal) {
+      state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: 0, baseRevision: revision(), ops: [{ op: 'replace', path: [], value: clone(localState) }], clientAt: Date.now() });
     }
     setHeadSeq(0);
     persistQueue();
@@ -466,7 +553,7 @@
       var ops = diff(before, next);
       var deleteEntities = collectDeletedEntities(before, next);
       if (!ops.length && !deleteEntities.length) return;
-      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, deleteEntities: deleteEntities, clientAt: Date.now() });
+       state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, deleteEntities: deleteEntities, status: 'pending', clientAt: Date.now() });
       compactQueue();
       state.queuedState = next;
       persistQueue();
@@ -475,7 +562,9 @@
     init: function (hooks) {
       state.get = hooks.get;
       state.apply = hooks.apply;
+      state.getLocalRevision = hooks.getLocalRevision || function () { return 0; };
       state.queue = read(QUEUE_KEY, []);
+      adoptQueueScope();
       state.queueHydrated = false;
       loadQueueFromIndexedDb().then(function () {
         state.queueHydrated = true;
@@ -506,6 +595,7 @@
       }
     },
     isSyncing: function () { return state.syncing || state.pulling; },
+    getSyncStatus: function () { return { status: state.syncStatus, retryAttempt: state.retryAttempt, nextRetryAt: state.retryTimer ? Date.now() + RETRY_BACKOFF[state.retryAttempt] : null }; },
     syncNow: pullLatest
   };
   global.addEventListener('online', function () { pullLatest(); flush(); });

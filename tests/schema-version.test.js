@@ -9,7 +9,7 @@ const ctx = { console, Date, Math, JSON, Number, String, Array, Object, Promise,
  confirm: () => true, alert() {}, document: doc, localStorage: { getItem: () => null, setItem() {}, removeItem() {} }, window: {}, performance: { now: () => Date.now() } };
 vm.createContext(ctx); vm.runInContext(SRC, ctx);
 const once = ctx.normalizeState(input);
-assert.equal(once.schemaVersion, 2, 'normalized state must carry schemaVersion 2');
+assert.equal(once.schemaVersion, 3, 'normalized state must carry current schemaVersion 3');
 const twice = ctx.normalizeState(once);
 assert.deepEqual(JSON.parse(JSON.stringify(twice)), JSON.parse(JSON.stringify(once)), 'schema migration must be idempotent');
-console.log('✓ schemaVersion：旧状态幂等迁移到 v2');
+console.log('✓ schemaVersion：旧状态幂等迁移到当前版本');

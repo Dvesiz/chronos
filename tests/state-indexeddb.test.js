@@ -1,0 +1,11 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const SRC = fs.readFileSync('app/src/main/assets/www/app.js', 'utf8');
+assert.match(SRC, /chronos-state-v1/, '主状态需要独立 IndexedDB 数据库');
+assert.match(SRC, /createObjectStore\(['"]state['"]/, '主状态数据库需要 state 对象仓');
+assert.match(SRC, /loadStateAsync/, '启动需要异步读取 IndexedDB 主状态');
+assert.match(SRC, /saveStateIndexedDb/, '保存需要写入 IndexedDB');
+assert.match(SRC, /clearStateIndexedDb/, '清空数据需要同步清除 IndexedDB 主状态');
+assert.match(SRC, /state\s*=\s*await loadStateAsync\(\)/, '启动必须等待主状态异步读取完成');
+assert.match(SRC, /localStorage/, '必须保留 localStorage 回退');
+console.log('✓ 主状态 IndexedDB：异步 primary + localStorage fallback 契约');

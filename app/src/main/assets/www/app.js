@@ -6,6 +6,8 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const STORE = 'chronos.state.v1';
+const STATE_META_KEY = 'chronos.state.meta.v1';
+const LOCAL_REVISION_KEY = 'chronos.state.local-revision.v1';
 const N = () => (window.Native ? window.Native : null);
 
 /* ---------------- 工具 ---------------- */
@@ -64,6 +66,105 @@ function defaultTemplate() {
   ];
 }
 
+var CURRENT_SCHEMA_VERSION = 3;
+var STATE_MIGRATIONS = {
+  1: state => ({ ...state, schemaVersion: 2 }),
+  2: state => ({ ...state, schemaVersion: 3, migrationFlags: { ...(state.migrationFlags || {}), indexedDbReady: false } })
+};
+var STATE_DB = 'chronos-state-v1';
+var stateDbPromise = null;
+var stateWriteChain = Promise.resolve();
+
+function indexedDbApi() {
+  try { return typeof window !== 'undefined' && window.indexedDB ? window.indexedDB : null; } catch (e) { return null; }
+}
+
+function openStateDb() {
+  var indexedDb = indexedDbApi();
+  if (!indexedDb) return Promise.resolve(null);
+  if (stateDbPromise) return stateDbPromise;
+  stateDbPromise = new Promise(function (resolve) {
+    try {
+      var req = indexedDb.open(STATE_DB, 1);
+      req.onupgradeneeded = function () {
+        var names = req.result.objectStoreNames;
+        if (!names || typeof names.contains !== 'function' || !names.contains('state')) {
+          req.result.createObjectStore('state', { keyPath: 'key' });
+        }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { resolve(null); };
+    } catch (e) { resolve(null); }
+  });
+  return stateDbPromise;
+}
+
+function readStateIndexedDb(db) {
+  if (!db) return Promise.resolve(null);
+  return new Promise(function (resolve) {
+    try {
+      var req = db.transaction('state', 'readonly').objectStore('state').get('current');
+      req.onsuccess = function () { resolve(req.result || null); };
+      req.onerror = function () { resolve(null); };
+    } catch (e) { resolve(null); }
+  });
+}
+
+function saveStateIndexedDb(snapshot, savedAt, localRevision) {
+  var copy;
+  try { copy = JSON.parse(JSON.stringify(snapshot)); } catch (e) { return Promise.resolve(false); }
+  stateWriteChain = stateWriteChain.catch(function () {}).then(function () {
+    return openStateDb().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (resolve) {
+        try {
+          var tx = db.transaction('state', 'readwrite');
+          tx.objectStore('state').put({ key: 'current', state: copy, savedAt: savedAt || Date.now(), localRevision: Number(localRevision || 0), schemaVersion: copy.schemaVersion || CURRENT_SCHEMA_VERSION });
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = function () { resolve(false); };
+          tx.onabort = function () { resolve(false); };
+        } catch (e) { resolve(false); }
+      });
+    });
+  });
+  return stateWriteChain;
+}
+
+function clearStateIndexedDb() {
+  stateWriteChain = stateWriteChain.catch(function () {}).then(function () {
+    return openStateDb().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (resolve) {
+        try {
+          var tx = db.transaction('state', 'readwrite');
+          tx.objectStore('state').delete('current');
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = function () { resolve(false); };
+          tx.onabort = function () { resolve(false); };
+        } catch (e) { resolve(false); }
+      });
+    });
+  });
+  return stateWriteChain;
+}
+
+function storedStateMeta() {
+  try { return JSON.parse(localStorage.getItem(STATE_META_KEY) || 'null') || {}; } catch (e) { return {}; }
+}
+function stateFingerprint(value) {
+  let text = '';
+  try { text = JSON.stringify(value) || ''; } catch (e) { return ''; }
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+}
+function localRevision() {
+  try { return Number(localStorage.getItem(LOCAL_REVISION_KEY) || 0); } catch (e) { return 0; }
+}
+
 /* ---------------- 状态 ---------------- */
 let state = loadState();
 
@@ -83,7 +184,8 @@ function initCloudSync() {
   if (!window.ChronosCloud) return;
   window.ChronosCloud.init({
     get: () => state,
-    apply: applyCloudState
+    apply: applyCloudState,
+    getLocalRevision: () => localRevision()
   });
 }
 
@@ -97,12 +199,43 @@ function loadState() {
   return normalizeState(s);
 }
 
+async function loadStateAsync() {
+  const db = await openStateDb();
+  const record = await readStateIndexedDb(db);
+  const fallback = loadState();
+  let rawLocal = null;
+  try { rawLocal = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) {}
+  const meta = storedStateMeta();
+  const localSavedAt = Number(meta.savedAt || 0);
+  const indexedSavedAt = Number(record && record.savedAt || 0);
+  const localChangedOutsideSave = !!(rawLocal && meta.fingerprint && stateFingerprint(rawLocal) !== meta.fingerprint);
+  if (record && record.state && !localChangedOutsideSave && (!rawLocal || indexedSavedAt >= localSavedAt)) {
+    return normalizeState(record.state);
+  }
+  const savedAt = Date.now();
+  saveStateIndexedDb(fallback, savedAt, localRevision()).catch(() => {});
+  try { localStorage.setItem(STATE_META_KEY, JSON.stringify({ savedAt, localRevision: localRevision(), schemaVersion: fallback.schemaVersion, fingerprint: stateFingerprint(fallback) })); } catch (e) {}
+  return fallback;
+}
+
+function migrateState(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  let state = input;
+  let version = Number.isInteger(state.schemaVersion) ? state.schemaVersion : 1;
+  if (version > CURRENT_SCHEMA_VERSION) return state;
+  while (version < CURRENT_SCHEMA_VERSION) {
+    const migrate = STATE_MIGRATIONS[version];
+    if (typeof migrate !== 'function') break;
+    state = migrate(state);
+    version = state.schemaVersion;
+  }
+  return state;
+}
+
 /** 把任意来源的数据补全成可用的 state（本地读取 / 导入共用） */
 function normalizeState(s) {
-  // schemaVersion=2：迁移只补结构字段，不覆盖用户已有业务数据；重复执行无副作用。
-  if (s && typeof s === 'object' && !Array.isArray(s) && (!Number.isInteger(s.schemaVersion) || s.schemaVersion < 2)) {
-    s = { ...s, schemaVersion: 2 };
-  }
+  s = migrateState(s);
+  // schemaVersion=3：迁移只补结构字段，不覆盖用户已有业务数据；重复执行无副作用。
   // 只有「完全没有存档」才回退到默认值：模板被删空是合法状态，
   // 不能因此把 days / 番茄记录等历史数据一起丢掉。
   if (!s || typeof s !== 'object' || Array.isArray(s)) {
@@ -139,7 +272,7 @@ function normalizeState(s) {
   if (!s.milestones || typeof s.milestones !== 'object' || Array.isArray(s.milestones)) s.milestones = {};
   if (!s.celebrated || typeof s.celebrated !== 'object' || Array.isArray(s.celebrated)) s.celebrated = {};
   if (!s.pendingCelebration || typeof s.pendingCelebration !== 'object' || Array.isArray(s.pendingCelebration)) s.pendingCelebration = {};
-  s.schemaVersion = 2;
+  s.schemaVersion = Math.max(CURRENT_SCHEMA_VERSION, Number.isInteger(s.schemaVersion) ? s.schemaVersion : CURRENT_SCHEMA_VERSION);
 
   // 超窗日期的每日汇总（明细只留 DETAIL_DAYS 天，更早的压到这里）
   // 导入 / 云端下发都必须保留，否则年度趋势会丢
@@ -255,12 +388,17 @@ function save(immediate) {
     Object.keys(state.reviews || {}).forEach(k => { if (k < cutoff) delete state.reviews[k]; });
     Object.keys(state.celebrated || {}).forEach(k => { if (k < cutoff) delete state.celebrated[k]; });
     Object.keys(state.pendingCelebration || {}).forEach(k => { if (k < cutoff) delete state.pendingCelebration[k]; });
+    const savedAt = Date.now();
+    const nextLocalRevision = localRevision() + 1;
     try {
       localStorage.setItem(STORE, JSON.stringify(state));
+      localStorage.setItem(STATE_META_KEY, JSON.stringify({ savedAt, localRevision: nextLocalRevision, schemaVersion: state.schemaVersion, fingerprint: stateFingerprint(state) }));
+      localStorage.setItem(LOCAL_REVISION_KEY, String(nextLocalRevision));
     } catch (e) {
       toast('本地保存失败，请立即导出数据');
       if (window.ChronosReport) window.ChronosReport.report('local_storage', e, { where: 'save' });
     }
+    saveStateIndexedDb(state, savedAt, nextLocalRevision).catch(() => {});
     const n = N();
     if (n && n.saveState) {
       try { n.saveState(JSON.stringify(state)); } catch (e) {}
@@ -3826,6 +3964,9 @@ function bindSettings() {
   $('#btnReset').addEventListener('click', () => {
     if (!confirm('确定清除全部记录吗？计划、统计和设置都会重置。')) return;
     localStorage.removeItem(STORE);
+    localStorage.removeItem(STATE_META_KEY);
+    localStorage.removeItem(LOCAL_REVISION_KEY);
+    clearStateIndexedDb().catch(() => {});
     const n = N();
     if (n && n.clearState) { try { n.clearState(); } catch (e) {} }
     state = loadState();
@@ -4005,7 +4146,7 @@ function bindSettingsStatic() {
 }
 
 /* ---------------- 启动 ---------------- */
-function boot() {
+async function boot() {
   // localStorage 失效时，从原生备份恢复
   try {
     if (!localStorage.getItem(STORE)) {
@@ -4014,7 +4155,7 @@ function boot() {
       if (backup) localStorage.setItem(STORE, backup);
     }
   } catch (e) {}
-  state = loadState();
+  state = await loadStateAsync();
   initCloudSync();
   settleStaleTimers(); // 前一天忘了停的计时先按 0 点结算
   ensureToday();

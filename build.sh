@@ -7,6 +7,8 @@ AJ="${ANDROID_JAR:-$SDK/platforms/android-35/android.jar}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SRC=$ROOT/app/src/main
 OUT=$ROOT/build
+# Windows ships a different `find.exe`; prefer the POSIX tool in MSYS/Git Bash.
+FIND_BIN="${FIND_BIN:-/usr/bin/find}"
 # 版本号只从 manifest 取，避免脚本、界面、README 三处各写一遍
 VERSION=$(awk -F'"' '/android:versionName=/{print $2; exit}' "$SRC/AndroidManifest.xml")
 [ -n "$VERSION" ] || VERSION="dev"
@@ -66,7 +68,7 @@ echo "==> package assets"
 ( cd "$SRC" && jar --update --file "$OUT/base.apk" --no-manifest assets )
 
 echo "==> compile java"
-find "$SRC/java" "$OUT/gen" -name '*.java' > "$OUT/sources.txt"
+$FIND_BIN "$SRC/java" "$OUT/gen" -name '*.java' > "$OUT/sources.txt"
 # MSYS/Cygwin find emits /d/... paths, while Windows javac expects D:\\....
 if command -v cygpath >/dev/null 2>&1; then
   while IFS= read -r source; do cygpath -w "$source"; done < "$OUT/sources.txt" > "$OUT/sources-win.txt"
@@ -85,7 +87,7 @@ if ! javac --release 11 -encoding UTF-8 \
 fi
 
 echo "==> dex"
-find "$OUT/classes" -name '*.class' > "$OUT/classes.txt"
+$FIND_BIN "$OUT/classes" -name '*.class' > "$OUT/classes.txt"
 if command -v cygpath >/dev/null 2>&1; then
   while IFS= read -r class_file; do cygpath -w "$class_file"; done < "$OUT/classes.txt" > "$OUT/classes-win.txt"
   CLASS_LIST="$(cygpath -m "$OUT/classes-win.txt")"

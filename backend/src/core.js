@@ -30,6 +30,7 @@ export const DEFAULT_STATE = {
 const MAX_EVENT_ID = 96;
 const MAX_DEVICE_ID = 128;
 const MAX_OPS = 200;
+const MAX_DELETE_ENTITIES = 200;
 const MAX_PATH = 32;
 const MAX_SEGMENT = 160;
 const MAX_STATE_BYTES = 1024 * 1024;
@@ -74,6 +75,16 @@ function validOp(op) {
     && (op.op !== 'replace' || op.value !== undefined);
 }
 
+function validDeleteEntity(entity) {
+  return entity && typeof entity === 'object' && !Array.isArray(entity)
+    && entity.entityType === 'task'
+    && typeof entity.entityId === 'string'
+    && entity.entityId.length > 0
+    && entity.entityId.length <= MAX_SEGMENT
+    && SAFE_SEGMENT.test(entity.entityId)
+    && Object.keys(entity).every(key => key === 'entityType' || key === 'entityId');
+}
+
 export function validateEvent(event) {
   if (!event || typeof event !== 'object') return { ok: false, error: 'event_invalid' };
   if (typeof event.eventId !== 'string' || event.eventId.length < 1 || event.eventId.length > MAX_EVENT_ID) {
@@ -88,6 +99,12 @@ export function validateEvent(event) {
   }
   if (!Array.isArray(event.ops) || event.ops.length > MAX_OPS || !event.ops.every(validOp)) {
     return { ok: false, error: 'ops_invalid' };
+  }
+  if (event.deleteEntities !== undefined
+    && (!Array.isArray(event.deleteEntities)
+      || event.deleteEntities.length > MAX_DELETE_ENTITIES
+      || !event.deleteEntities.every(validDeleteEntity))) {
+    return { ok: false, error: 'delete_entities_invalid' };
   }
   if (event.clientAt !== undefined && (!Number.isSafeInteger(event.clientAt) || event.clientAt < 0)) {
     return { ok: false, error: 'client_time_invalid' };
