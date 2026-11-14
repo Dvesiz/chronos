@@ -139,6 +139,7 @@ function normalizeState(s) {
   if (!s.milestones || typeof s.milestones !== 'object' || Array.isArray(s.milestones)) s.milestones = {};
   if (!s.celebrated || typeof s.celebrated !== 'object' || Array.isArray(s.celebrated)) s.celebrated = {};
   if (!s.pendingCelebration || typeof s.pendingCelebration !== 'object' || Array.isArray(s.pendingCelebration)) s.pendingCelebration = {};
+  s.schemaVersion = 2;
 
   // 超窗日期的每日汇总（明细只留 DETAIL_DAYS 天，更早的压到这里）
   // 导入 / 云端下发都必须保留，否则年度趋势会丢
