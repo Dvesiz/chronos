@@ -10,6 +10,7 @@
   var ACK_KEY = 'chronos.cloud.acknowledged.v1';
   var DEVICE_KEY = 'chronos.cloud.device.v1';
   var HEAD_KEY = 'chronos.cloud.head.v1';
+  var REVISION_KEY = 'chronos.cloud.revision.v1';
   var MAX_QUEUE = 100;
   var state = {
     get: function () { return null; },
@@ -160,12 +161,15 @@
       eventId: randomId(),
       deviceId: deviceId(),
       baseSeq: keep ? keep.baseSeq : headSeq(),
+      baseRevision: revision(),
       ops: merged,
       clientAt: Date.now()
     }] : [];
   }
   function headSeq() { return Number(localStorage.getItem(HEAD_KEY) || 0); }
   function setHeadSeq(value) { try { localStorage.setItem(HEAD_KEY, String(Math.max(0, Number(value) || 0))); } catch (e) {} }
+  function revision() { return Number(localStorage.getItem(REVISION_KEY) || 0); }
+  function setRevision(value) { try { localStorage.setItem(REVISION_KEY, String(Math.max(0, Number(value) || 0))); } catch (e) {} }
 
   /**
    * 云端要覆盖本地之前，先把本地快照留一份。
@@ -200,19 +204,29 @@
     var uploaded = false;
     try {
       var result = await request('/v1/sync/events', {
-        method: 'POST', body: JSON.stringify({ events: state.queue.slice(0, 20) })
+        method: 'POST', body: JSON.stringify({
+        baseRevision: revision(),
+        events: state.queue.slice(0, 20).map(function (event) {
+          return Object.assign({}, event, { baseRevision: revision() });
+        })
+      })
       });
       var accepted = {};
       (result.accepted || []).forEach(function (item) { accepted[item.eventId] = true; });
       state.queue = state.queue.filter(function (event) { return !accepted[event.eventId]; });
       persistQueue();
       setHeadSeq(result.headSeq || headSeq());
+      setRevision(result.revision == null ? revision() : result.revision);
       setAcknowledged(result.state || state.queuedState);
       state.queuedState = clone(result.state || state.queuedState);
       uploaded = true;
     } catch (e) {
       // 服务端拒绝整份 replace：说明队列里是旧版逻辑留下的破坏性事件。
       // 直接丢弃这些事件并拉取云端，绝不再重试（否则会一直顶着云端状态）。
+      if (e && e.code === 'stale_revision') {
+        pullLatest();
+        return;
+      }
       if (e && e.code === 'replace_forbidden') {
         state.queue = state.queue.filter(function (event) {
           return !(event.ops || []).some(function (op) {
@@ -244,12 +258,13 @@
       if (!remote || !remote.state) return;
       remoteSeq = Number(remote.headSeq || remoteSeq);
       setHeadSeq(remoteSeq);
+      setRevision(remote.revision == null ? revision() : remote.revision);
       setAcknowledged(remote.state);
       if (state.queue.length) {
         var merged = clone(remote.state);
         state.queue.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
         var rebasedOps = diff(remote.state, merged);
-        state.queue = rebasedOps.length ? [{ eventId: randomId(), deviceId: deviceId(), baseSeq: remoteSeq, ops: rebasedOps, clientAt: Date.now() }] : [];
+        state.queue = rebasedOps.length ? [{ eventId: randomId(), deviceId: deviceId(), baseSeq: remoteSeq, baseRevision: revision(), ops: rebasedOps, clientAt: Date.now() }] : [];
         state.queuedState = clone(merged);
         persistQueue();
         applyRemote(merged, 'rebase');
@@ -300,7 +315,7 @@
     state.queue.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
     var rebasedOps = diff(remoteState, merged);
     state.queue = rebasedOps.length ? [{
-      eventId: randomId(), deviceId: deviceId(), baseSeq: remoteSeq,
+      eventId: randomId(), deviceId: deviceId(), baseSeq: remoteSeq, baseRevision: revision(),
       ops: rebasedOps, clientAt: Date.now()
     }] : [];
     state.queuedState = clone(merged);
@@ -321,6 +336,7 @@
 
     if (hasRemote) {
       setHeadSeq(remote.headSeq || 0);
+      setRevision(remote.revision == null ? revision() : remote.revision);
       setAcknowledged(remote.state);
       if (state.queue.length) rebaseQueue(remote.state, remote.headSeq || 0);
       else applyRemote(remote.state, 'login');
@@ -336,7 +352,7 @@
     ));
     state.queue = [];
     if (hasLocal) {
-      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: 0, ops: [{ op: 'replace', path: [], value: clone(localState) }], clientAt: Date.now() });
+      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: 0, baseRevision: revision(), ops: [{ op: 'replace', path: [], value: clone(localState) }], clientAt: Date.now() });
     }
     setHeadSeq(0);
     persistQueue();
@@ -372,7 +388,7 @@
       var before = state.queuedState || next;
       var ops = diff(before, next);
       if (!ops.length) return;
-      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: headSeq(), ops: ops, clientAt: Date.now() });
+      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, clientAt: Date.now() });
       compactQueue();
       state.queuedState = next;
       persistQueue();

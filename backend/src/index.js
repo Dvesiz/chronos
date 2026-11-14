@@ -164,14 +164,24 @@ async function refresh(request, env) {
   return json(await createSession({ id: row.user_id, email: row.email, nickname: row.nickname, avatar: row.avatar, avatarData: row.avatar_data || '' }, row.device_id, env));
 }
 
-async function appendEventWithCas(env, user, event) {
-  await env.DB.prepare('INSERT OR IGNORE INTO sync_documents (user_id,state_json,head_seq,updated_at) VALUES (?,?,?,?)')
-    .bind(user.id, JSON.stringify(compactState(DEFAULT_STATE)), 0, now()).run();
+async function appendEventWithCas(env, user, event, expectedRevision = null) {
+  await env.DB.prepare('INSERT OR IGNORE INTO sync_documents (user_id,state_json,head_seq,updated_at,revision) VALUES (?,?,?,?,?)')
+    .bind(user.id, JSON.stringify(compactState(DEFAULT_STATE)), 0, now(), 0).run();
 
   for (let attempt = 0; attempt < 4; attempt++) {
-    const document = await env.DB.prepare('SELECT state_json,head_seq FROM sync_documents WHERE user_id=?').bind(user.id).first();
+    const document = await env.DB.prepare('SELECT state_json,head_seq,revision FROM sync_documents WHERE user_id=?').bind(user.id).first();
     const state = JSON.parse(document.state_json);
+    const revision = Number(document.revision || 0);
     if (!validateStateSize(state)) throw new Error('state_too_large');
+    // revision 是业务版本门禁；旧客户端没有 baseRevision 时退回 baseSeq。
+    const clientRevision = expectedRevision === null
+      ? (event.baseRevision === undefined ? Number(event.baseSeq || 0) : event.baseRevision)
+      : expectedRevision;
+    if (clientRevision !== revision) {
+      const stale = new Error('stale_revision');
+      stale.currentRevision = revision;
+      throw stale;
+    }
     // 云端已有数据时禁止「整份 replace」：这是历史上的数据丢失事故来源
     // （旧版客户端会用本地陈旧状态 replace 覆盖整个云端，再被其它设备拉走）。
     // 只有 head_seq === 0（首次上传）才允许全量替换。
@@ -186,11 +196,12 @@ async function appendEventWithCas(env, user, event) {
     const createdAt = now();
     const serverSeq = Number(document.head_seq || 0) + 1;
     try {
+      const nextRevision = revision + 1;
       const batch = await env.DB.batch([
-        env.DB.prepare('INSERT INTO sync_events (user_id,server_seq,event_id,device_id,base_seq,ops_json,client_at,created_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM sync_documents WHERE user_id=? AND head_seq=?)')
-          .bind(user.id, serverSeq, event.eventId, event.deviceId, event.baseSeq, JSON.stringify(event.ops), event.clientAt || null, createdAt, user.id, document.head_seq),
-        env.DB.prepare('UPDATE sync_documents SET state_json=?,head_seq=?,updated_at=? WHERE user_id=? AND head_seq=?')
-          .bind(JSON.stringify(nextState), serverSeq, createdAt, user.id, document.head_seq)
+        env.DB.prepare('INSERT INTO sync_events (user_id,server_seq,event_id,device_id,base_seq,ops_json,client_at,created_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM sync_documents WHERE user_id=? AND head_seq=? AND revision=?)')
+          .bind(user.id, serverSeq, event.eventId, event.deviceId, event.baseSeq, JSON.stringify(event.ops), event.clientAt || null, createdAt, user.id, document.head_seq, revision),
+        env.DB.prepare('UPDATE sync_documents SET state_json=?,head_seq=?,revision=?,updated_at=? WHERE user_id=? AND head_seq=? AND revision=?')
+          .bind(JSON.stringify(nextState), serverSeq, nextRevision, createdAt, user.id, document.head_seq, revision)
       ]);
       if (batch[0].meta.changes !== 1 || batch[1].meta.changes !== 1) continue;
       // 事件日志只用于「客户端增量拉取」，不是真相来源（sync_documents 才是）。
@@ -201,7 +212,7 @@ async function appendEventWithCas(env, user, event) {
       } catch (pruneErr) {
         /* 裁剪失败不影响本次同步写入 */
       }
-      return { state: nextState, headSeq: serverSeq, serverSeq, duplicate: false };
+      return { state: nextState, headSeq: serverSeq, revision: nextRevision, serverSeq, duplicate: false };
     } catch (err) {
       /* Same user sequence was claimed concurrently; the next attempt reads the new snapshot. */
     }
@@ -216,33 +227,43 @@ async function syncEvents(request, env, user) {
   const accepted = [];
   let state = compactState(DEFAULT_STATE);
   let headSeq = 0;
+  let revision = 0;
+  if (events.length) {
+    const first = events[0];
+    const document = await env.DB.prepare('SELECT revision,head_seq FROM sync_documents WHERE user_id=?').bind(user.id).first();
+    revision = Number(document?.revision || 0);
+    const requested = first.baseRevision === undefined ? Number(first.baseSeq || 0) : first.baseRevision;
+    if (requested !== revision) return json({ error: 'stale_revision', message: '云端版本已更新，请先拉取并合并', currentRevision: revision }, 409);
+  }
   for (const event of events) {
     const checked = validateEvent(event);
     if (!checked.ok) return error(checked.error, 400);
     try {
-      const result = await appendEventWithCas(env, user, event);
+      const result = await appendEventWithCas(env, user, event, revision);
       state = result.state;
       headSeq = result.headSeq;
-      accepted.push({ eventId: event.eventId, serverSeq: result.serverSeq, duplicate: result.duplicate });
+      revision = result.revision ?? revision + 1;
+      accepted.push({ eventId: event.eventId, serverSeq: result.serverSeq, revision, duplicate: result.duplicate });
     } catch (err) {
       if (err?.message === 'state_too_large') return error('state_too_large', 413);
       if (err?.message === 'replace_forbidden') return error('replace_forbidden', 409, '云端已有数据，不允许整份覆盖；请拉取云端后重试');
+      if (err?.message === 'stale_revision') return json({ error: 'stale_revision', message: '云端版本已更新，请先拉取并合并', currentRevision: err.currentRevision }, 409);
       if (err?.message === 'sync_conflict') return error('sync_conflict', 409, '云端正在同步，请稍后重试');
       throw err;
     }
   }
   const document = await env.DB.prepare('SELECT state_json,head_seq FROM sync_documents WHERE user_id=?').bind(user.id).first();
-  if (document) { state = JSON.parse(document.state_json); headSeq = document.head_seq; }
-  return json({ ok: true, headSeq, accepted, state });
+  if (document) { state = JSON.parse(document.state_json); headSeq = document.head_seq; revision = document.revision ?? revision; }
+  return json({ ok: true, headSeq, revision, accepted, state });
 }
 
 async function syncSnapshot(env, user) {
-  const row = await env.DB.prepare('SELECT state_json,head_seq,updated_at FROM sync_documents WHERE user_id=?').bind(user.id).first();
-  return json({ state: row ? JSON.parse(row.state_json) : compactState(DEFAULT_STATE), headSeq: row?.head_seq || 0, updatedAt: row?.updated_at || null });
+  const row = await env.DB.prepare('SELECT state_json,head_seq,revision,updated_at FROM sync_documents WHERE user_id=?').bind(user.id).first();
+  return json({ state: row ? JSON.parse(row.state_json) : compactState(DEFAULT_STATE), headSeq: row?.head_seq || 0, revision: row?.revision || 0, updatedAt: row?.updated_at || null });
 }
 async function syncHead(env, user) {
-  const row = await env.DB.prepare('SELECT head_seq,updated_at FROM sync_documents WHERE user_id=?').bind(user.id).first();
-  return json({ headSeq: row?.head_seq || 0, updatedAt: row?.updated_at || null });
+  const row = await env.DB.prepare('SELECT head_seq,revision,updated_at FROM sync_documents WHERE user_id=?').bind(user.id).first();
+  return json({ headSeq: row?.head_seq || 0, revision: row?.revision || 0, updatedAt: row?.updated_at || null });
 }
 async function syncHistory(request, env, user) {
   const after = Math.max(0, Number(new URL(request.url).searchParams.get('after') || 0));

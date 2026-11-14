@@ -83,6 +83,9 @@ export function validateEvent(event) {
     return { ok: false, error: 'device_id_invalid' };
   }
   if (!Number.isSafeInteger(event.baseSeq) || event.baseSeq < 0) return { ok: false, error: 'base_seq_invalid' };
+  if (event.baseRevision !== undefined && (!Number.isSafeInteger(event.baseRevision) || event.baseRevision < 0)) {
+    return { ok: false, error: 'base_revision_invalid' };
+  }
   if (!Array.isArray(event.ops) || event.ops.length > MAX_OPS || !event.ops.every(validOp)) {
     return { ok: false, error: 'ops_invalid' };
   }
