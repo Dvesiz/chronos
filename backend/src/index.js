@@ -177,8 +177,10 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
       baseSeq: event.baseSeq,
       baseRevision: event.baseRevision ?? null,
       ops: event.ops,
+      deleteEntities: event.deleteEntities || [],
       clientAt: event.clientAt ?? null
     }));
+    const deleteEntities = Array.isArray(event.deleteEntities) ? event.deleteEntities : [];
     if (!validateStateSize(state)) throw new Error('state_too_large');
     const ledgerEntry = await env.DB.prepare('SELECT server_seq,revision,payload_hash FROM operation_ledger WHERE user_id=? AND event_id=?')
       .bind(user.id, event.eventId).first();
@@ -215,10 +217,14 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
           .bind(user.id, serverSeq, event.eventId, event.deviceId, event.baseSeq, JSON.stringify(event.ops), event.clientAt || null, createdAt, user.id, document.head_seq, revision),
         env.DB.prepare('INSERT INTO operation_ledger (user_id,event_id,device_id,server_seq,revision,payload_hash,created_at) SELECT ?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM sync_documents WHERE user_id=? AND head_seq=? AND revision=?)')
           .bind(user.id, event.eventId, event.deviceId, serverSeq, nextRevision, payloadHash, createdAt, user.id, document.head_seq, revision),
+        ...deleteEntities.map(entity => env.DB.prepare('INSERT INTO sync_tombstones (user_id,entity_type,entity_id,delete_revision,device_id,deleted_at) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id,entity_type,entity_id) DO UPDATE SET delete_revision=excluded.delete_revision,device_id=excluded.device_id,deleted_at=excluded.deleted_at')
+          .bind(user.id, entity.entityType || 'task', entity.entityId, nextRevision, event.deviceId, createdAt)),
         env.DB.prepare('UPDATE sync_documents SET state_json=?,head_seq=?,revision=?,updated_at=? WHERE user_id=? AND head_seq=? AND revision=?')
           .bind(JSON.stringify(nextState), serverSeq, nextRevision, createdAt, user.id, document.head_seq, revision)
       ]);
-      if (batch[0].meta.changes !== 1 || batch[1].meta.changes !== 1 || batch[2].meta.changes !== 1) continue;
+      const ledgerIndex = 1;
+      const documentUpdateIndex = 2 + deleteEntities.length;
+      if (batch[0].meta.changes !== 1 || batch[ledgerIndex].meta.changes !== 1 || batch[documentUpdateIndex].meta.changes !== 1) continue;
       // 事件日志只用于「客户端增量拉取」，不是真相来源（sync_documents 才是）。
       // 每写一条就顺手裁掉超出上限的旧日志，否则 D1 会无限膨胀。
       try {
@@ -275,7 +281,13 @@ async function syncEvents(request, env, user) {
 
 async function syncSnapshot(env, user) {
   const row = await env.DB.prepare('SELECT state_json,head_seq,revision,updated_at FROM sync_documents WHERE user_id=?').bind(user.id).first();
-  return json({ state: row ? JSON.parse(row.state_json) : compactState(DEFAULT_STATE), headSeq: row?.head_seq || 0, revision: row?.revision || 0, updatedAt: row?.updated_at || null });
+  const tombstones = await env.DB.prepare('SELECT entity_type,entity_id,delete_revision FROM sync_tombstones WHERE user_id=?').bind(user.id).all();
+  const state = row ? JSON.parse(row.state_json) : compactState(DEFAULT_STATE);
+  const deletedTasks = new Set((tombstones.results || []).filter(t => t.entity_type === 'task').map(t => t.entity_id));
+  Object.values(state.days || {}).forEach(day => {
+    if (Array.isArray(day.tasks)) day.tasks = day.tasks.filter(task => !deletedTasks.has(task.id) && !deletedTasks.has(task.templateId));
+  });
+  return json({ state, headSeq: row?.head_seq || 0, revision: row?.revision || 0, tombstones: tombstones.results || [], updatedAt: row?.updated_at || null });
 }
 async function syncHead(env, user) {
   const row = await env.DB.prepare('SELECT head_seq,revision,updated_at FROM sync_documents WHERE user_id=?').bind(user.id).first();

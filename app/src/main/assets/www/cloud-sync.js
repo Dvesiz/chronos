@@ -27,6 +27,19 @@
   function clone(value) {
     return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
   }
+  function collectDeletedEntities(before, after) {
+    var out = [];
+    var beforeDays = before && before.days || {};
+    var afterDays = after && after.days || {};
+    Object.keys(beforeDays).forEach(function (date) {
+      var oldTasks = beforeDays[date] && beforeDays[date].tasks || [];
+      var newIds = new Set((afterDays[date] && afterDays[date].tasks || []).map(function (t) { return t.id; }));
+      oldTasks.forEach(function (task) {
+        if (task && task.id && !newIds.has(task.id)) out.push({ entityType: 'task', entityId: task.id });
+      });
+    });
+    return out;
+  }
   function read(key, fallback) {
     try { return JSON.parse(localStorage.getItem(key) || 'null') || fallback; } catch (e) { return fallback; }
   }
@@ -208,7 +221,7 @@
         method: 'POST', body: JSON.stringify({
         baseRevision: revision(),
         events: state.queue.slice(0, 20).map(function (event) {
-          return Object.assign({}, event, { baseRevision: revision() });
+          return Object.assign({}, event, { baseRevision: revision(), deleteEntities: event.deleteEntities || [] });
         })
       })
       });
@@ -389,8 +402,9 @@
       var next = clone(nextState);
       var before = state.queuedState || next;
       var ops = diff(before, next);
-      if (!ops.length) return;
-      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, clientAt: Date.now() });
+      var deleteEntities = collectDeletedEntities(before, next);
+      if (!ops.length && !deleteEntities.length) return;
+      state.queue.push({ eventId: randomId(), deviceId: deviceId(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, deleteEntities: deleteEntities, clientAt: Date.now() });
       compactQueue();
       state.queuedState = next;
       persistQueue();

@@ -188,14 +188,24 @@ function removeAt(root, path) {
   return root;
 }
 
-export function applyOps(state, ops) {
+export function applyOps(state, ops, tombstones = []) {
   let next = clone(state) || {};
+  const deleted = new Set((tombstones || []).filter(t => t && t.entityType === 'task').map(t => t.entityId));
+  if (deleted.size) {
+    Object.values(next.days || {}).forEach(day => {
+      if (Array.isArray(day.tasks)) day.tasks = day.tasks.filter(task => !deleted.has(task.id) && !deleted.has(task.templateId));
+    });
+  }
   for (const op of ops || []) {
     if (op.op === 'replace' && op.path.length === 0) next = clone(op.value) || {};
     else if (op.op === 'set') next = setAt(next, op.path, op.value);
     else if (op.op === 'remove') next = removeAt(next, op.path);
   }
   return next;
+}
+
+export function filterTombstonedTasks(state, tombstones = []) {
+  return applyOps(state, [], tombstones);
 }
 
 function isObject(value) {
