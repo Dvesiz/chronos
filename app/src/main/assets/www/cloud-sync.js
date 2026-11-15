@@ -156,6 +156,8 @@
     syncStatus: 'idle',
     retryAttempt: 0,
     retryTimer: null,
+    lastError: null,
+    lastSyncAt: 0,
     getLocalRevision: function () { return 0; },
     initialSyncInFlight: false
   };
@@ -463,8 +465,11 @@
       }
       uploaded = true;
       state.retryAttempt = 0;
+      state.lastError = null;
+      state.lastSyncAt = Date.now();
       if (resultHasStaleRevision) {
         state.syncStatus = 'recovery_required';
+        state.lastError = 'stale_revision';
         retryAfterPull = true;
       } else state.syncStatus = state.queue.some(function (event) { return event.status === 'conflict' || event.status === 'rejected'; })
         ? 'conflict' : (state.queue.length ? 'pending' : 'idle');
@@ -474,6 +479,7 @@
       // 直接丢弃这些事件并拉取云端，绝不再重试（否则会一直顶着云端状态）。
       if (e && e.code === 'stale_revision') {
         state.syncStatus = 'recovery_required';
+        state.lastError = e.code;
         retryAfterPull = true;
         return;
       }
@@ -485,10 +491,12 @@
         });
         persistQueue();
         state.syncStatus = 'conflict';
+        state.lastError = e.code;
         pullLatest(true);
         return;
       }
       state.syncStatus = e && (e.code === 'cloud_timeout' || e.code === 'cloud_network') ? 'retrying' : 'failed';
+      state.lastError = e && e.code ? String(e.code) : 'cloud_request_failed';
       state.retryAttempt = Math.min(state.retryAttempt + 1, RETRY_BACKOFF.length - 1);
       if (state.retryTimer) global.clearTimeout(state.retryTimer);
       state.retryTimer = global.setTimeout(function () { state.retryTimer = null; flush(); }, RETRY_BACKOFF[state.retryAttempt]);
@@ -510,7 +518,7 @@
       var remoteSeq = Number(head && head.headSeq || 0);
       // 没有 acknowledged snapshot 时，即使 headSeq 相等也必须拉一次快照，
       // 否则离线队列压缩会错误退回 queuedState 作为云端基线。
-      if (!forceSnapshot && remoteSeq <= headSeq() && acknowledgedState()) { flush(); return; }
+      if (!forceSnapshot && remoteSeq <= headSeq() && acknowledgedState()) { await flush(); return; }
       var remote = await request('/v1/sync/snapshot');
       if (!remote || !remote.state) return;
       remoteSeq = Number(remote.headSeq || remoteSeq);
@@ -524,16 +532,20 @@
         state.queuedState = clone(state.get());
         persistQueue();
         state.syncStatus = 'pending';
-        flush();
+        await flush();
       } else if (eligibleQueue().length || state.queue.some(function (event) { return event.status === 'conflict' || event.status === 'rejected'; })) {
         await rebaseQueue(remote.state, remoteSeq);
-        flush();
+        await flush();
       } else {
         applyRemote(remote.state, 'poll');
       }
-      state.syncStatus = state.queue.length ? 'pending' : 'idle';
+      if (!state.lastError) {
+        state.lastSyncAt = Date.now();
+        state.syncStatus = state.queue.length ? 'pending' : 'idle';
+      }
     } catch (e) {
       state.syncStatus = e && (e.code === 'cloud_timeout' || e.code === 'cloud_network') ? 'retrying' : 'failed';
+      state.lastError = e && e.code ? String(e.code) : 'cloud_request_failed';
     } finally {
       state.pulling = false;
     }
@@ -701,11 +713,13 @@
       state.booted = true;
       if (state.loggedIn) {
         state.initialSyncInFlight = true;
+        state.syncStatus = 'pulling';
         // 打开页面时同样以云端为准：先丢掉旧队列，再拉快照覆盖本地。
         // 只有本地干净（无待传队列）时才直接覆盖，避免吞掉真正的未上传改动。
         request('/v1/sync/snapshot').then(async function (remote) {
           if (remote && remote.state) {
             setHeadSeq(remote.headSeq || 0);
+            setRevision(remote.revision == null ? revision() : remote.revision);
             setAcknowledged(remote.state);
             if (Number(remote.headSeq || 0) > 0) {
               setAcknowledged(remote.state);
@@ -713,9 +727,13 @@
               else applyRemote(remote.state, 'boot');
             }
           }
+          state.lastError = null;
+          state.lastSyncAt = Date.now();
           state.initialSyncInFlight = false;
           flush();
-        }).catch(function () {
+        }).catch(function (e) {
+          state.lastError = e && e.code ? String(e.code) : 'cloud_request_failed';
+          state.syncStatus = e && (e.code === 'cloud_timeout' || e.code === 'cloud_network') ? 'retrying' : 'failed';
           state.initialSyncInFlight = false;
           flush();
         });
@@ -723,7 +741,16 @@
       }
     },
     isSyncing: function () { return state.syncing || state.pulling; },
-    getSyncStatus: function () { return { status: state.syncStatus, retryAttempt: state.retryAttempt, nextRetryAt: state.retryTimer ? Date.now() + RETRY_BACKOFF[state.retryAttempt] : null }; },
+    getSyncStatus: function () {
+      return {
+        status: state.syncStatus,
+        error: state.lastError,
+        pendingCount: eligibleQueue().length,
+        lastSyncAt: state.lastSyncAt,
+        retryAttempt: state.retryAttempt,
+        nextRetryAt: state.retryTimer ? Date.now() + RETRY_BACKOFF[state.retryAttempt] : null
+      };
+    },
     devices: async function () { return request('/v1/sync/devices'); },
     revokeDevice: async function (id) { return request('/v1/sync/devices/revoke', { method: 'POST', body: JSON.stringify({ deviceId: id }) }); },
     syncNow: pullLatest

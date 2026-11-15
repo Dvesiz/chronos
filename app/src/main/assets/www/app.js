@@ -3849,6 +3849,26 @@ function bindSettings() {
     if (n && n.openOverlaySettings) n.openOverlaySettings();
     else toast('浏览器预览中无法修改系统权限');
   });
+  $('#btnSyncNow').addEventListener('click', async e => {
+    const cloud = window.ChronosCloud;
+    if (!cloud || !cloud.enabled()) { toast('后端尚未配置，暂时无法同步'); return; }
+    if (!cloud.hasSession()) { toast('请先登录同一个账号'); return; }
+    const button = e.currentTarget;
+    button.disabled = true;
+    button.textContent = '同步中…';
+    try {
+      await cloud.syncNow();
+      checkPermissions();
+      const sync = cloud.getSyncStatus ? cloud.getSyncStatus() : {};
+      toast(sync.status === 'idle' ? '同步完成' : '同步仍在后台继续，请查看状态');
+    } catch (err) {
+      checkPermissions();
+      toast('同步失败，请查看状态提示');
+    } finally {
+      button.disabled = false;
+      button.textContent = '立即同步';
+    }
+  });
   $('#btnFeedback').addEventListener('click', () => openFeedbackSheet());
   $('#btnCheckUpdate').addEventListener('click', async () => {
     if (!window.ChronosCloud || !window.ChronosCloud.enabled()) { toast('后端尚未配置，暂时无法检查更新'); return; }
@@ -4053,6 +4073,34 @@ function checkPermissions() {
   // 浏览器没有 Native 对象，版本号也必须在提前返回前更新。
   const v = (n && n.appVersion ? n.appVersion() : '') || window.CHRONOS_APP_VERSION || '';
   if (v) $('#aboutVer').textContent = 'Version ' + v + ' · 个人版';
+  const cloudHint = () => {
+    const cloud = window.ChronosCloud;
+    if (!cloud || !cloud.enabled()) return '云同步未配置';
+    if (!cloud.hasSession()) return '未登录 · 数据仅保存在本机';
+    const sync = cloud.getSyncStatus ? cloud.getSyncStatus() : {};
+    const errors = {
+      cloud_network: '网络不可用',
+      cloud_timeout: '请求超时',
+      unauthorized: '登录已失效，请重新登录',
+      stale_revision: '正在合并多设备修改',
+      replace_forbidden: '本地待同步数据需要重新整理',
+      protocol_unsupported: '客户端版本过旧，请更新',
+      schema_unsupported: '客户端版本过旧，请更新',
+      account_scope_mismatch: '账号不一致，请重新登录',
+      sync_conflict: '多设备同时修改，正在重试',
+      server_not_configured: '服务端配置异常',
+      cloud_request_failed: '服务端请求失败'
+    };
+    let label = '已同步';
+    if (sync.status === 'pulling') label = '正在拉取云端数据';
+    else if (sync.status === 'uploading') label = '正在上传本机数据';
+    else if (sync.status === 'pending') label = `等待上传（${sync.pendingCount || 0} 条）`;
+    else if (sync.status === 'retrying') label = `网络异常，${errors[sync.error] || '自动重试中'}`;
+    else if (sync.status === 'recovery_required') label = '正在合并多设备修改';
+    else if (sync.status === 'conflict') label = '存在同步冲突，请恢复本机快照';
+    else if (sync.status === 'failed') label = '同步失败 · ' + (errors[sync.error] || '请稍后重试');
+    return '已登录 · ' + label;
+  };
   if (!n) {
     $('#notifyPermText').textContent = '浏览器预览模式';
     $('#btnNotifyPerm').textContent = '说明';
@@ -4062,7 +4110,7 @@ function checkPermissions() {
     $('#btnUsagePerm').textContent = '说明';
     $('#overlayPermText').textContent = '打包为 APK 后生效';
     $('#btnOverlayPerm').textContent = '说明';
-    $('#envHint').textContent = '当前为浏览器预览，安装 APK 后系统提醒生效';
+    $('#envHint').textContent = cloudHint() + ' · 浏览器预览';
     return;
   }
   let st = {};
@@ -4098,9 +4146,7 @@ function checkPermissions() {
   }
   updateGuardRow();
 
-  $('#envHint').textContent = window.ChronosCloud && window.ChronosCloud.hasSession()
-    ? '已登录 · 本地优先，云端同步已开启'
-    : '未登录 · 数据仅保存在本机';
+  $('#envHint').textContent = cloudHint();
 }
 
 async function openFeedbackSheet() {

@@ -113,4 +113,49 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.equal(stored.length, 0, '成功上传后旧 rejected 事件必须从队列移除');
     console.log('✓ legacy stale_revision：升级后自动恢复旧 rejected 队列');
   }
+
+  // 启动时已有本地待上传队列：初始快照返回的 revision 必须成为下一次上传基线。
+  {
+    const values = new Map([
+      ['chronos.cloud.session.v1', JSON.stringify({ accessToken: 'a', refreshToken: 'r', user: { id: 'account-a' } })],
+      ['chronos.cloud.queue.v1.v2.account-a', JSON.stringify([{
+        eventId: 'startup-pending', deviceId: 'device-a', accountScope: 'account-a', baseSeq: 3, baseRevision: 3,
+        ops: [{ op: 'set', path: ['local'], value: 1 }], queuedAt: 1, clientAt: 1
+      }])]
+    ]);
+    const localStorage = {
+      getItem: key => values.get(key) || null,
+      setItem: (key, value) => values.set(key, String(value)),
+      removeItem: key => values.delete(key)
+    };
+    const posted = [];
+    const window = {
+      CHRONOS_API_BASE: 'https://api.example', localStorage,
+      AbortController, crypto: { randomUUID: () => 'startup-retry' },
+      addEventListener: () => {}, setInterval: () => 1, setTimeout, clearTimeout
+    };
+    const document = { hidden: false, addEventListener: () => {} };
+    vm.runInNewContext(SOURCE, {
+      window, document, localStorage,
+      fetch: async (url, options = {}) => {
+        const path = String(url);
+        if (path.includes('/v1/sync/snapshot')) return response({ state: { remote: 1 }, headSeq: 4, revision: 4 });
+        if (path.includes('/v1/sync/events')) {
+          const body = JSON.parse(options.body);
+          posted.push(body);
+          return response({ accepted: body.events.map(event => ({ eventId: event.eventId })), headSeq: 5, revision: 5, state: { remote: 1, local: 1 } });
+        }
+        if (path.includes('/v1/sync/ack')) return response({ ok: true });
+        throw new Error('unexpected request ' + path);
+      },
+      AbortController, crypto: window.crypto, setTimeout, clearTimeout, console
+    });
+    let current = { local: 1 };
+    window.ChronosCloud.init({ get: () => current, apply: next => { current = next; } });
+    for (let i = 0; i < 8 && posted.length < 1; i++) await tick();
+    assert.equal(posted.length, 1, '启动时已有队列应在快照对账后上传');
+    assert.equal(posted[0].baseRevision, 4, '启动快照 revision 必须成为上传基线');
+    assert.equal(posted[0].events[0].baseRevision, 4, '事件也必须使用启动快照 revision');
+    console.log('✓ 启动对账：使用云端 revision 作为上传基线');
+  }
 })().catch(error => { console.error('FAILED:', error.message); process.exit(1); });

@@ -6,7 +6,7 @@ const INDEX = fs.readFileSync('app/src/main/assets/www/index.html', 'utf8');
 const APP = fs.readFileSync('app/src/main/assets/www/app.js', 'utf8');
 const CSS = fs.readFileSync('app/src/main/assets/www/styles.css', 'utf8');
 
-assert.doesNotMatch(INDEX, /Version 2\.7\.1/, '网页版本兜底值不能继续显示 2.7.1');
+assert.doesNotMatch(INDEX, /Version 2\.7\.1(?:\D|$)/, '网页版本兜底值不能继续显示 2.7.1');
 assert.match(APP, /const v = \(n && n\.appVersion \? n\.appVersion\(\) : ''\) \|\| window\.CHRONOS_APP_VERSION/, '版本号必须读取统一配置');
 assert.match(APP, /backupReasonLabel/, '备份原因必须经过用户可读文案映射');
 assert.doesNotMatch(APP, /esc\(item\.reason \|\| '同步快照'\)/, '备份列表不得直接渲染内部 reason');
