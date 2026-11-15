@@ -753,9 +753,11 @@
     },
     devices: async function () { return request('/v1/sync/devices'); },
     revokeDevice: async function (id) { return request('/v1/sync/devices/revoke', { method: 'POST', body: JSON.stringify({ deviceId: id }) }); },
-    syncNow: pullLatest
+    // 手动同步、应用恢复和网络恢复必须强制拉快照，
+    // 避免本地 head 游标异常偏大时只看 head 而永久错过云端状态。
+    syncNow: function () { return pullLatest(true); }
   };
-  global.addEventListener('online', function () { pullLatest(); flush(); });
-  global.addEventListener('focus', pullLatest);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) pullLatest(); });
+  global.addEventListener('online', function () { pullLatest(true); flush(); });
+  global.addEventListener('focus', function () { pullLatest(true); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) pullLatest(true); });
 })(window);

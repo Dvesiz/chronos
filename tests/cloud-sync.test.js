@@ -172,3 +172,26 @@ test('flushes events queued while another upload is in flight', async () => {
   await tick();
   assert.equal(postCount, 2, 'queued event should upload after the active request finishes');
 });
+
+test('manual sync forces a snapshot when the local head cursor is stale', async () => {
+  let current = { value: 0 };
+  let snapshots = 0;
+  const harness = createHarness(async url => {
+    const path = String(url);
+    if (path.includes('/v1/sync/head')) return response({ headSeq: 1, revision: 1 });
+    if (path.includes('/v1/sync/snapshot')) {
+      snapshots++;
+      return response({ state: { value: 1 }, headSeq: 1, revision: 1 });
+    }
+    if (path.includes('/v1/sync/ack')) return response({ ok: true });
+    throw new Error(`unexpected request ${url}`);
+  });
+  harness.values.set('chronos.cloud.head.v1', '99');
+  harness.values.set('chronos.cloud.acknowledged.v1', JSON.stringify({ value: 0 }));
+  harness.api.init({ get: () => current, apply: state => { current = state; } });
+  await tick();
+  const initialSnapshots = snapshots;
+  await harness.api.syncNow();
+  assert.equal(snapshots, initialSnapshots + 1, '手动同步不得被本地偏大的 head 游标短路');
+  assert.deepEqual(JSON.parse(JSON.stringify(current)), { value: 1 });
+});
