@@ -12,4 +12,6 @@ assert.match(APP, /backupReasonLabel/, '备份原因必须经过用户可读文�
 assert.doesNotMatch(APP, /esc\(item\.reason \|\| '同步快照'\)/, '备份列表不得直接渲染内部 reason');
 assert.match(CSS, /\.backup-list\s*\{/ , '备份列表需要独立布局');
 assert.match(CSS, /\.backup-item\s*\{/, '备份项需要稳定的网格布局');
+assert.match(INDEX, /app\.js\?v=[a-f0-9]+/, '网页脚本需要提交版本缓存键');
+assert.match(INDEX, /styles\.css\?v=[a-f0-9]+/, '网页样式需要提交版本缓存键');
 console.log('✓ 网页版本号与同步备份文案契约通过');
