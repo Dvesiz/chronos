@@ -3888,6 +3888,16 @@ function bindSettings() {
       return Array.isArray(list) ? list.filter(item => item && item.state) : [];
     } catch (e) { return []; }
   }
+  const BACKUP_REASON_LABELS = {
+    boot: '启动同步',
+    login: '登录同步',
+    poll: '后台同步',
+    rebase: '冲突合并',
+    cloud_overwrite: '云端覆盖'
+  };
+  function backupReasonLabel(reason) {
+    return BACKUP_REASON_LABELS[String(reason || '')] || '同步快照';
+  }
   function readCloudBackup() { return readCloudBackups()[0] || null; }
   function refreshCloudRestoreRow() {
     const row = $('#rowCloudRestore');
@@ -3910,7 +3920,7 @@ function bindSettings() {
       list.innerHTML = backups.map((item, index) => {
         const d = new Date(item.at || Date.now());
         const when = `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-        return `<button class="backup-item" data-backup-index="${index}"><span>${when}</span><small>${esc(item.reason || '同步快照')}</small><b>恢复</b></button>`;
+        return `<button class="backup-item" data-backup-index="${index}"><span>${when}</span><small>${esc(backupReasonLabel(item.reason))}</small><b>恢复</b></button>`;
       }).join('');
       list.querySelectorAll('[data-backup-index]').forEach(btn => btn.addEventListener('click', () => restoreCloudBackup(Number(btn.dataset.backupIndex))));
     }
@@ -4040,6 +4050,9 @@ function seedDemo() {
 /* ---------------- 通知 / 权限 ---------------- */
 function checkPermissions() {
   const n = N();
+  // 浏览器没有 Native 对象，版本号也必须在提前返回前更新。
+  const v = (n && n.appVersion ? n.appVersion() : '') || window.CHRONOS_APP_VERSION || '';
+  if (v) $('#aboutVer').textContent = 'Version ' + v + ' · 个人版';
   if (!n) {
     $('#notifyPermText').textContent = '浏览器预览模式';
     $('#btnNotifyPerm').textContent = '说明';
@@ -4085,9 +4098,6 @@ function checkPermissions() {
   }
   updateGuardRow();
 
-  // 版本号优先级：原生读取（APK 真实安装版本）> cloud-config 常量（网页版）
-  const v = (n.appVersion ? n.appVersion() : '') || window.CHRONOS_APP_VERSION || '';
-  if (v) $('#aboutVer').textContent = 'Version ' + v + ' · 个人版';
   $('#envHint').textContent = window.ChronosCloud && window.ChronosCloud.hasSession()
     ? '已登录 · 本地优先，云端同步已开启'
     : '未登录 · 数据仅保存在本机';

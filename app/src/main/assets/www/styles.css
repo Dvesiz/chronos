@@ -735,6 +735,34 @@ body:not(.motion) .stats-month-chevron { transition: none; }
 .row-title { font-size: 14px; font-weight: 600; }
 .row-sub { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
 
+.backup-list { display: grid; gap: 8px; margin: 8px 16px 16px; }
+.backup-item {
+  width: 100%;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--card-2);
+  color: var(--ink);
+  text-align: left;
+}
+.backup-item span {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.backup-item small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.backup-item b { color: var(--accent); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.backup-item:active { transform: scale(.99); }
+
 /* 行内删除按钮：两次点击确认 */
 .row-del {
   position: relative;
