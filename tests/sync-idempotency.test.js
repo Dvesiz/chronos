@@ -17,5 +17,13 @@ const MIGRATION = fs.readFileSync('backend/migrations/0004_operation_ledger.sql'
   assert.match(SERVER, /duplicate.*true|duplicate\s*:/i, 'same event id must return an idempotent duplicate result');
   assert.match(SERVER, /INSERT INTO operation_ledger/i, 'accepted event must be recorded in the ledger');
   assert.match(SERVER, /DELETE FROM sync_events/, 'event history pruning must remain separate from ledger retention');
+  assert.match(SERVER, /LEDGER_RETENTION_MS/, '幂等账本必须有明确的保留期限');
+  assert.match(SERVER, /DELETE FROM operation_ledger/, '幂等账本必须按保留期限清理');
+  const ledgerCheck = SERVER.indexOf('const ledgerEntry =');
+  const revisionCheck = SERVER.indexOf('const clientRevision =');
+  assert.ok(ledgerCheck >= 0 && revisionCheck > ledgerCheck,
+    '重复事件必须先命中幂等账本，再进行 revision 门禁');
+  assert.doesNotMatch(SERVER, /const requested = first\.baseRevision[\s\S]{0,220}return json\(\{ error: 'stale_revision'/,
+    '批量入口不能在幂等账本之前用第一条事件提前拒绝整批重试');
   console.log('✓ idempotency ledger contract is present');
 })();

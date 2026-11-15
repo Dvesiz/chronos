@@ -4,6 +4,7 @@ const SERVER = fs.readFileSync('backend/src/index.js', 'utf8');
 const MIGRATION = fs.readFileSync('backend/migrations/0006_sync_devices.sql', 'utf8');
 assert.match(SERVER, /MIN\(acknowledged_seq\)/i, 'archive threshold must use slowest active device cursor');
 assert.match(SERVER, /revoked_at IS NULL/, 'revoked devices must not block archive');
+assert.match(SERVER, /last_seen_at>\?/, '长期离线设备不得永久阻塞归档');
 assert.match(SERVER, /archiveThrough/, 'archive must cap deletion by slowest active device');
 assert.match(SERVER, /server_seq<=\?/,'archive must delete only through the safe cursor');
 assert.match(MIGRATION, /revoked_at/);

@@ -193,7 +193,7 @@ const tick = () => new Promise(r => setImmediate(r));
       throw new Error('unexpected ' + u);
     }, { session: false });
     harness.values.set('chronos.cloud.queue.v1', JSON.stringify([{
-      eventId: 'pending-local', deviceId: 'device-a', baseSeq: 7,
+      eventId: 'pending-local', deviceId: 'device-a', accountScope: 'u@e.com', baseSeq: 7,
       ops: [{ op: 'set', path: ['local'], value: 1 }], clientAt: Date.now()
     }]));
     harness.api.init({ get: () => current, apply: s => { current = s; } });

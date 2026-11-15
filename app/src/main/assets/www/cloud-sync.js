@@ -17,6 +17,50 @@
   var RETRY_BACKOFF = [2000, 4000, 8000, 16000, 32000];
   var OUTBOX_DB = 'chronos-sync-v1';
   var outboxDbPromise = null;
+  var outboxWriteChain = Promise.resolve();
+  function normalizeScope(scope) {
+    return scope === undefined || scope === null || scope === '' ? null : String(scope);
+  }
+  function scopedKey(base, scope) {
+    var normalized = normalizeScope(scope);
+    return normalized === null ? base : base + '.v2.' + encodeURIComponent(normalized);
+  }
+  function eventScope(event) { return normalizeScope(event && event.accountScope); }
+  function mergeQueues(primary, secondary) {
+    var byId = {};
+    (primary || []).concat(secondary || []).forEach(function (event) {
+      if (!event || !event.eventId) return;
+      var previous = byId[event.eventId];
+      if (!previous || Number(event.queuedAt || 0) >= Number(previous.queuedAt || 0)) byId[event.eventId] = event;
+    });
+    return Object.keys(byId).map(function (key) { return byId[key]; });
+  }
+  function readQueueForScope(scope) {
+    var normalized = normalizeScope(scope);
+    var queue = read(scopedKey(QUEUE_KEY, normalized), []);
+    if (normalized !== null) {
+      var legacy = read(QUEUE_KEY, []);
+      var legacyForScope = legacy.filter(function (event) {
+        return eventScope(event) === normalized;
+      });
+      queue = mergeQueues(queue, legacyForScope);
+      if (legacyForScope.length) {
+        write(QUEUE_KEY, legacy.filter(function (event) { return eventScope(event) !== normalized; }));
+      }
+    }
+    return (queue || []).filter(function (event) { return eventScope(event) === normalized; });
+  }
+  function writeQueueLocal(scope, queue) {
+    var normalized = normalizeScope(scope);
+    var key = scopedKey(QUEUE_KEY, normalized);
+    if (normalized === null) {
+      var existing = read(key, []);
+      var foreign = existing.filter(function (event) { return eventScope(event) !== null; });
+      write(key, mergeQueues(foreign, queue || []));
+      return;
+    }
+    write(key, (queue || []).filter(function (event) { return eventScope(event) === normalized; }));
+  }
   function openOutboxDb() {
     if (!global.indexedDB) return Promise.resolve(null);
     if (outboxDbPromise) return outboxDbPromise;
@@ -30,34 +74,46 @@
     });
     return outboxDbPromise;
   }
-  function persistQueueIndexedDb() {
-    openOutboxDb().then(function (db) {
-      if (!db) return;
-      try {
-        var tx = db.transaction('outbox', 'readwrite');
-        var store = tx.objectStore('outbox');
-        store.clear(); state.queue.forEach(function (event) { store.put(clone(event)); });
-      } catch (e) {}
+  function persistQueueIndexedDb(queue, scope) {
+    var normalized = normalizeScope(scope);
+    var snapshot = (queue || []).filter(function (event) { return eventScope(event) === normalized; }).map(clone);
+    outboxWriteChain = outboxWriteChain.catch(function () {}).then(function () {
+      return openOutboxDb().then(function (db) {
+        if (!db) return;
+        return new Promise(function (resolve) {
+          try {
+            var tx = db.transaction('outbox', 'readwrite');
+            var store = tx.objectStore('outbox');
+            var request = store.getAll();
+            request.onsuccess = function () {
+              var ids = {};
+              snapshot.forEach(function (event) { if (event && event.eventId) ids[event.eventId] = true; });
+              (request.result || []).forEach(function (event) {
+                if (eventScope(event) === normalized && !ids[event.eventId]) store.delete(event.eventId);
+              });
+              snapshot.forEach(function (event) { if (event && event.eventId) store.put(event); });
+            };
+            tx.oncomplete = function () { resolve(); };
+            tx.onerror = function () { resolve(); };
+            tx.onabort = function () { resolve(); };
+          } catch (e) { resolve(); }
+        });
+      });
     });
+    return outboxWriteChain;
   }
-  function loadQueueFromIndexedDb() {
+  function loadQueueFromIndexedDb(scope) {
+    var normalized = normalizeScope(scope);
     return openOutboxDb().then(function (db) {
       if (!db) return;
       return new Promise(function (resolve) {
         try {
           var req = db.transaction('outbox', 'readonly').objectStore('outbox').getAll();
           req.onsuccess = function () {
-            var rows = req.result || [];
+            var rows = (req.result || []).filter(function (event) { return eventScope(event) === normalized; });
             if (rows.length) {
-              var byId = {};
-              state.queue.forEach(function (event) { if (event && event.eventId) byId[event.eventId] = event; });
-              rows.forEach(function (event) {
-                if (!event || !event.eventId) return;
-                var current = byId[event.eventId];
-                if (!current || Number(event.queuedAt || 0) >= Number(current.queuedAt || 0)) byId[event.eventId] = event;
-              });
-              state.queue = Object.keys(byId).map(function (key) { return byId[key]; });
-              persistQueue();
+              state.queue = mergeQueues(state.queue, rows);
+              writeQueueLocal(normalized, state.queue);
             }
             resolve();
           };
@@ -81,6 +137,8 @@
     booted: false,
     queuedState: null,
     queue: [],
+    queueScope: null,
+    queueReady: Promise.resolve(),
     pulling: false,
     pollTimer: null,
     queueHydrated: false,
@@ -126,17 +184,17 @@
     return session && session.user && (session.user.id || session.user.email)
       ? String(session.user.id || session.user.email) : null;
   }
+  function currentQueueScope() {
+    return normalizeScope(state.queueScope);
+  }
   function adoptQueueScope() {
-    var scope = accountScope();
-    if (!scope) return;
-    state.queue.forEach(function (event) {
-      if (event && !event.accountScope) event.accountScope = scope;
-    });
+    var scope = currentQueueScope();
+    state.queue = state.queue.filter(function (event) { return eventScope(event) === scope; });
   }
   function eligibleQueue() {
-    var scope = accountScope();
+    var scope = currentQueueScope();
     return state.queue.filter(function (event) {
-      return event && event.accountScope === scope && event.status !== 'conflict' && event.status !== 'rejected';
+      return event && eventScope(event) === scope && event.status !== 'conflict' && event.status !== 'rejected';
     });
   }
   function isObject(value) { return value && typeof value === 'object' && !Array.isArray(value); }
@@ -240,13 +298,25 @@
     if (!locks || typeof locks.request !== 'function') return work();
     return locks.request('chronos-sync-write', { mode: 'exclusive' }, work);
   }
-  function persistQueue() { write(QUEUE_KEY, state.queue); persistQueueIndexedDb(); }
+  function withQueueWriteLock(work) {
+    return Promise.resolve(withWriteLock(function () {
+      // 读取同一作用域的最新持久化队列，再合并当前标签页的内存队列，
+      // 避免两个标签页各自基于旧快照写回时互相覆盖。
+      state.queue = mergeQueues(readQueueForScope(currentQueueScope()), state.queue);
+      return work();
+    }));
+  }
+  function persistQueueForScope(scope, queue) {
+    writeQueueLocal(scope, queue);
+    persistQueueIndexedDb(queue, scope);
+  }
+  function persistQueue() { persistQueueForScope(currentQueueScope(), state.queue); }
   function notifyTabs() { try { if (tabChannel) tabChannel.postMessage({ type: 'state-changed', at: Date.now() }); } catch (e) {} }
   if (tabChannel) tabChannel.onmessage = function (event) {
     if (event && event.data && event.data.type === 'state-changed') pullLatest(true);
   };
-  function acknowledgedState() { return read(ACK_KEY, null); }
-  function setAcknowledged(next) { if (next) write(ACK_KEY, clone(next)); }
+  function acknowledgedState() { return read(scopedKey(ACK_KEY, currentQueueScope()), null); }
+  function setAcknowledged(next) { if (next) write(scopedKey(ACK_KEY, currentQueueScope()), clone(next)); }
 
   /**
    * 队列过长时塌缩成一条合并事件，而不是丢弃最旧的。
@@ -267,7 +337,7 @@
     state.queue = merged.length ? [{
       eventId: randomId(),
       deviceId: deviceId(),
-      accountScope: accountScope(),
+      accountScope: currentQueueScope(),
       baseSeq: keep ? keep.baseSeq : headSeq(),
       baseRevision: revision(),
       ops: merged,
@@ -276,10 +346,10 @@
       clientAt: Date.now()
     }] : [];
   }
-  function headSeq() { return Number(localStorage.getItem(HEAD_KEY) || 0); }
-  function setHeadSeq(value) { try { localStorage.setItem(HEAD_KEY, String(Math.max(0, Number(value) || 0))); } catch (e) {} }
-  function revision() { return Number(localStorage.getItem(REVISION_KEY) || 0); }
-  function setRevision(value) { try { localStorage.setItem(REVISION_KEY, String(Math.max(0, Number(value) || 0))); } catch (e) {} }
+  function headSeq() { return Number(localStorage.getItem(scopedKey(HEAD_KEY, currentQueueScope())) || 0); }
+  function setHeadSeq(value) { try { localStorage.setItem(scopedKey(HEAD_KEY, currentQueueScope()), String(Math.max(0, Number(value) || 0))); } catch (e) {} }
+  function revision() { return Number(localStorage.getItem(scopedKey(REVISION_KEY, currentQueueScope())) || 0); }
+  function setRevision(value) { try { localStorage.setItem(scopedKey(REVISION_KEY, currentQueueScope()), String(Math.max(0, Number(value) || 0))); } catch (e) {} }
   function mergeDeleteEntities(events) {
     var seen = {};
     var out = [];
@@ -334,10 +404,10 @@
         method: 'POST', body: JSON.stringify({
         protocolVersion: PROTOCOL_VERSION,
         schemaVersion: SCHEMA_VERSION,
-        accountScope: accountScope(),
+        accountScope: currentQueueScope(),
         baseRevision: revision(),
         events: pending.slice(0, 20).map(function (event) {
-          return Object.assign({}, event, { accountScope: accountScope(), baseRevision: revision(), deleteEntities: event.deleteEntities || [] });
+          return Object.assign({}, event, { accountScope: currentQueueScope(), baseRevision: revision(), deleteEntities: event.deleteEntities || [] });
         })
       })
       });
@@ -422,19 +492,13 @@
       if (remoteSeq >= 0) request('/v1/sync/ack', { method: 'POST', body: JSON.stringify({ deviceId: deviceId(), ackServerSeq: remoteSeq, appVersion: APP_VERSION, protocolVersion: PROTOCOL_VERSION }) }).catch(function () {});
       if (Number(state.getLocalRevision() || 0) !== localRevisionAtStart && !state.queue.length) {
         var raced = diff(remote.state, state.get());
-        if (raced.length) state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: raced, deleteEntities: collectDeletedEntities(remote.state, state.get()), queuedAt: Date.now(), clientAt: Date.now() });
+        if (raced.length) state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: currentQueueScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: raced, deleteEntities: collectDeletedEntities(remote.state, state.get()), queuedAt: Date.now(), clientAt: Date.now() });
         state.queuedState = clone(state.get());
         persistQueue();
         state.syncStatus = 'pending';
         flush();
-      } else if (state.queue.length) {
-        var merged = clone(remote.state);
-        eligibleQueue().forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
-        var rebasedOps = diff(remote.state, merged);
-        state.queue = rebasedOps.length ? [{ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: rebasedOps, deleteEntities: mergeDeleteEntities(eligibleQueue()), queuedAt: Date.now(), clientAt: Date.now() }] : [];
-        state.queuedState = clone(merged);
-        persistQueue();
-        applyRemote(merged, 'rebase');
+      } else if (eligibleQueue().length || state.queue.some(function (event) { return event.status === 'conflict' || event.status === 'rejected'; })) {
+        await rebaseQueue(remote.state, remoteSeq);
         flush();
       } else {
         applyRemote(remote.state, 'poll');
@@ -478,30 +542,48 @@
    *  2. 云端为空   → 本地有数据才上传（这是唯一允许全量上传的时机），
    *                  否则什么都不做。
    */
-  function rebaseQueue(remoteState, remoteSeq) {
-    if (remoteSeq > 0 && state.queue.some(function (event) {
-      return (event.ops || []).some(function (op) { return op.op === 'replace' && (!op.path || !op.path.length); });
-    })) {
-      state.syncStatus = 'conflict';
+  async function rebaseQueue(remoteState, remoteSeq) {
+    return withQueueWriteLock(function () {
+      var pending = eligibleQueue();
+      if (remoteSeq > 0 && pending.some(function (event) {
+        return (event.ops || []).some(function (op) { return op.op === 'replace' && (!op.path || !op.path.length); });
+      })) {
+        state.syncStatus = 'conflict';
+        persistQueue();
+        return state.get();
+      }
+      var merged = clone(remoteState) || {};
+      pending.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
+      var rebasedOps = diff(remoteState, merged);
+      var preserved = state.queue.filter(function (event) { return pending.indexOf(event) < 0; });
+      state.queue = preserved.concat(rebasedOps.length ? [{
+        eventId: randomId(), deviceId: deviceId(), accountScope: currentQueueScope(), baseSeq: remoteSeq, baseRevision: revision(),
+        ops: rebasedOps, deleteEntities: mergeDeleteEntities(pending), queuedAt: Date.now(), clientAt: Date.now()
+      }] : []);
+      state.queuedState = clone(merged);
       persistQueue();
-      return state.get();
-    }
-    var merged = clone(remoteState) || {};
-    state.queue.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
-    var rebasedOps = diff(remoteState, merged);
-    state.queue = rebasedOps.length ? [{
-      eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: remoteSeq, baseRevision: revision(),
-      ops: rebasedOps, deleteEntities: mergeDeleteEntities(eligibleQueue()), queuedAt: Date.now(), clientAt: Date.now()
-    }] : [];
-    state.queuedState = clone(merged);
-    persistQueue();
-    applyRemote(merged, 'rebase');
-    return merged;
+      applyRemote(merged, 'rebase');
+      return merged;
+    });
   }
 
   async function loginReady(auth, localState) {
     if (!API_BASE || !auth) return;
+    await state.queueReady;
+    var previousScope = currentQueueScope();
     write(SESSION_KEY, auth);
+    var nextScope = accountScope();
+    if (nextScope !== previousScope) {
+      var currentQueue = state.queue;
+      var carry = currentQueue.filter(function (event) { return eventScope(event) === nextScope; });
+      var remain = currentQueue.filter(function (event) { return eventScope(event) !== nextScope; });
+      persistQueueForScope(previousScope, remain);
+      state.queueScope = nextScope;
+      state.queue = mergeQueues(readQueueForScope(nextScope), carry);
+      state.queueHydrated = false;
+      state.queueReady = loadQueueFromIndexedDb(nextScope).then(function () { state.queueHydrated = true; });
+      await state.queueReady;
+    }
     state.loggedIn = true;
     startPolling();
     state.queuedState = clone(localState);
@@ -513,7 +595,7 @@
       setHeadSeq(remote.headSeq || 0);
       setRevision(remote.revision == null ? revision() : remote.revision);
       setAcknowledged(remote.state);
-      if (state.queue.length) rebaseQueue(remote.state, remote.headSeq || 0);
+      if (state.queue.length) await rebaseQueue(remote.state, remote.headSeq || 0);
       else applyRemote(remote.state, 'login');
       flush();
       return;
@@ -527,7 +609,7 @@
     ));
     var pending = eligibleQueue();
     if (!pending.length && hasLocal) {
-      state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: 0, baseRevision: revision(), ops: [{ op: 'replace', path: [], value: clone(localState) }], queuedAt: Date.now(), clientAt: Date.now() });
+      state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: currentQueueScope(), baseSeq: 0, baseRevision: revision(), ops: [{ op: 'replace', path: [], value: clone(localState) }], queuedAt: Date.now(), clientAt: Date.now() });
     }
     setHeadSeq(0);
     persistQueue();
@@ -564,20 +646,22 @@
       var ops = diff(before, next);
       var deleteEntities = collectDeletedEntities(before, next);
       if (!ops.length && !deleteEntities.length) return;
-       state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: accountScope(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, deleteEntities: deleteEntities, status: 'pending', queuedAt: Date.now(), clientAt: Date.now() });
-      compactQueue();
       state.queuedState = next;
-      persistQueue();
-      flush();
+      withQueueWriteLock(function () {
+        state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: currentQueueScope(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, deleteEntities: deleteEntities, status: 'pending', queuedAt: Date.now(), clientAt: Date.now() });
+        compactQueue();
+        persistQueue();
+      }).then(flush).catch(function () { state.syncStatus = 'failed'; });
     },
     init: function (hooks) {
       state.get = hooks.get;
       state.apply = hooks.apply;
       state.getLocalRevision = hooks.getLocalRevision || function () { return 0; };
-      state.queue = read(QUEUE_KEY, []);
+      state.queueScope = accountScope();
+      state.queue = readQueueForScope(state.queueScope);
       adoptQueueScope();
       state.queueHydrated = false;
-      loadQueueFromIndexedDb().then(function () {
+      state.queueReady = loadQueueFromIndexedDb(state.queueScope).then(function () {
         state.queueHydrated = true;
         if (state.loggedIn) flush();
       });
@@ -590,13 +674,13 @@
       if (state.loggedIn) {
         // 打开页面时同样以云端为准：先丢掉旧队列，再拉快照覆盖本地。
         // 只有本地干净（无待传队列）时才直接覆盖，避免吞掉真正的未上传改动。
-        request('/v1/sync/snapshot').then(function (remote) {
+        request('/v1/sync/snapshot').then(async function (remote) {
           if (remote && remote.state) {
             setHeadSeq(remote.headSeq || 0);
             setAcknowledged(remote.state);
             if (Number(remote.headSeq || 0) > 0) {
               setAcknowledged(remote.state);
-              if (state.queue.length) rebaseQueue(remote.state, remote.headSeq || 0);
+              if (state.queue.length) await rebaseQueue(remote.state, remote.headSeq || 0);
               else applyRemote(remote.state, 'boot');
             }
           }
@@ -607,6 +691,8 @@
     },
     isSyncing: function () { return state.syncing || state.pulling; },
     getSyncStatus: function () { return { status: state.syncStatus, retryAttempt: state.retryAttempt, nextRetryAt: state.retryTimer ? Date.now() + RETRY_BACKOFF[state.retryAttempt] : null }; },
+    devices: async function () { return request('/v1/sync/devices'); },
+    revokeDevice: async function (id) { return request('/v1/sync/devices/revoke', { method: 'POST', body: JSON.stringify({ deviceId: id }) }); },
     syncNow: pullLatest
   };
   global.addEventListener('online', function () { pullLatest(); flush(); });

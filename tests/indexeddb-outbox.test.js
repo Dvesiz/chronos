@@ -4,4 +4,7 @@ const SRC = fs.readFileSync('app/src/main/assets/www/cloud-sync.js', 'utf8');
 assert.match(SRC, /indexedDB/, 'sync adapter should expose IndexedDB path');
 assert.match(SRC, /outbox|queue/i, 'IndexedDB path should store outbox records');
 assert.match(SRC, /localStorage/, 'localStorage fallback must remain available');
+assert.match(SRC, /getAll\(\)/, 'Outbox 清理必须先读取同一作用域的事件');
+assert.match(SRC, /store\.delete/, 'Outbox 清理必须按事件删除');
+assert.doesNotMatch(SRC, /store\.clear\(\)/, '不能用全量 clear 删除其他账号的 Outbox');
 console.log('✓ IndexedDB outbox compatibility contract is present');

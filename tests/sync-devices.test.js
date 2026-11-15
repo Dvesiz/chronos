@@ -14,4 +14,7 @@ assert.match(SERVER, /sync\/ack/);
 assert.match(SERVER, /device_id/);
 assert.match(CLIENT, /sync\/ack/);
 assert.match(CLIENT, /acknowledged|ackServerSeq/);
+assert.match(SERVER, /DEVICE_IDLE_TTL/, '设备归档必须有离线过期阈值');
+assert.match(SERVER, /sync\/devices\/revoke/, '必须提供设备主动撤销接口');
+assert.match(SERVER, /revokeDevice|revoked_at/, '设备重新确认后应能解除撤销状态');
 console.log('✓ sync device cursor contract is present');

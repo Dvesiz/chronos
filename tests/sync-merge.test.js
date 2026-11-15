@@ -146,5 +146,29 @@ function loadClient() {
     console.log('✓ P1-3 兜底：无 id 数组退回整块替换，不误合并');
   }
 
+  // ---------- P1-4：自由专注使用 sessionId 做稳定合并键 ----------
+  {
+    const mod = await import('../backend/src/core.js');
+    const { applyOps } = mod;
+    let state = { days: { d: { partialFocus: [{ sessionId: 's-a', seconds: 10 }] } } };
+    state = applyOps(state, [{
+      op: 'set', path: ['days', 'd', 'partialFocus'],
+      value: [{ sessionId: 's-b', seconds: 20 }]
+    }]);
+    assert.equal(state.days.d.partialFocus.length, 2,
+      '两台设备新增不同自由专注记录时，已有记录不得被整块覆盖');
+    assert.ok(state.days.d.partialFocus.some(session => session.sessionId === 's-a'));
+    assert.ok(state.days.d.partialFocus.some(session => session.sessionId === 's-b'));
+
+    state = applyOps(state, [{
+      op: 'set', path: ['days', 'd', 'partialFocus'],
+      value: [{ sessionId: 's-a', seconds: 15 }]
+    }]);
+    assert.equal(state.days.d.partialFocus.filter(session => session.sessionId === 's-a').length, 1,
+      '重复提交同一个 sessionId 不得生成重复记录');
+    assert.equal(state.days.d.partialFocus.find(session => session.sessionId === 's-a').seconds, 15);
+    console.log('✓ P1-4 自由专注：按 sessionId 合并并去重');
+  }
+
   console.log('\n全部通过：diff 行为等价 + 字段级合并生效');
 })().catch(e => { console.error('FAILED:', e.message); process.exit(1); });

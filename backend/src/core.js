@@ -149,6 +149,7 @@ function mergeArrayById(base, incoming) {
   const keyOf = item => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
     if (typeof item.id === 'string' && item.id) return item.id;
+    if (typeof item.sessionId === 'string' && item.sessionId) return 'session:' + item.sessionId;
     if (typeof item.taskId === 'string' && item.taskId) return 'task:' + item.taskId;
     return null;
   };
@@ -217,6 +218,12 @@ export function applyOps(state, ops, tombstones = []) {
     if (op.op === 'replace' && op.path.length === 0) next = clone(op.value) || {};
     else if (op.op === 'set') next = setAt(next, op.path, op.value);
     else if (op.op === 'remove') next = removeAt(next, op.path);
+  }
+  // 墓碑是最终状态约束：并发 set/replace 不能让已删除实体重新出现。
+  if (deleted.size) {
+    Object.values(next.days || {}).forEach(day => {
+      if (Array.isArray(day.tasks)) day.tasks = day.tasks.filter(task => !deleted.has(task.id) && !deleted.has(task.templateId));
+    });
   }
   return next;
 }

@@ -4,4 +4,7 @@ const SRC = fs.readFileSync('app/src/main/assets/www/cloud-sync.js', 'utf8');
 assert.match(SRC, /navigator\.locks|locks\.request/, 'cloud sync should use Web Locks when available');
 assert.match(SRC, /chronos-sync-write/, 'writes should share a stable lock name');
 assert.match(SRC, /BroadcastChannel/, 'broadcast notification remains available');
+assert.match(SRC, /withQueueWriteLock/, '队列新增与重建必须走统一写入协调器');
+assert.match(SRC, /withQueueWriteLock\(function \(\) \{[\s\S]{0,600}state\.queue\.push/, '新增事件必须在队列写锁内完成');
+assert.match(SRC, /async function rebaseQueue/, 'rebase 必须等待写锁完成');
 console.log('✓ Web Locks：跨标签页写入互斥契约');

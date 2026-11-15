@@ -118,10 +118,12 @@ Chronos 的业务状态以 IndexedDB 为主存储，数据库名为 `chronos-sta
 登录邮箱验证码后，Chronos 可通过 Cloudflare Worker + D1 在 Android 和网页端同步计划、计时、统计与复盘。同步协议的关键保证包括：
 
 - **账号作用域隔离**：事件、队列和云端文档绑定当前账号，切换账号不会串数据。
+- **账号命名空间**：acknowledged snapshot、head、revision 和 Outbox 按账号独立保存；未知归属的旧事件不会被新账号自动认领。
 - **IndexedDB Outbox**：待同步事件写入独立的 `chronos-sync-v1` 队列，并保留 `localStorage` 兼容回退。
 - **revision 与幂等账本**：服务端使用版本检查和事件幂等键，避免并发提交重复落库。
 - **删除墓碑**：删除任务等实体会留下 tombstone，防止其他设备把已删除数据重新带回。
 - **设备游标与安全归档**：设备确认同步游标后，服务端按活跃设备的最小确认位置归档旧事件。
+- **设备生命周期**：长期 90 天未活动的设备不再阻塞归档，用户可查看设备状态并主动撤销设备。
 - **快照与校验**：服务端维护带 revision、schema version 和 checksum 的快照，客户端可重新拉取并校验。
 - **批量逐事件结果**：一次提交会返回每个事件的 accepted、conflict 或 rejected 状态，冲突事件保留在本地供处理。
 - **网络恢复**：请求超时或断网时按 2 / 4 / 8 / 16 / 32 秒退避重试，不影响离线使用。
@@ -136,7 +138,7 @@ Chronos 的业务状态以 IndexedDB 为主存储，数据库名为 `chronos-sta
 - Android SDK Platform 35。
 - Android Build-Tools 35.0.0。
 - Git Bash、WSL 或其他能运行 `build.sh` 的 Bash 环境。
-- Node.js 运行测试和 Worker，本地部署依赖 Wrangler。
+- Node.js 22+ 运行测试和 Worker，本地部署依赖 Wrangler；CI 固定使用 Node 22。
 
 ### 构建 APK
 

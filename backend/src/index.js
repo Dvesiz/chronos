@@ -8,6 +8,8 @@ const PROTOCOL_VERSION = 2;
 const SCHEMA_VERSION = 3;
 /** 每个用户保留的事件日志条数；更早的会被裁剪，快照才是真相来源 */
 const MAX_EVENTS_PER_USER = 500;
+const DEVICE_IDLE_TTL = 90 * 24 * 60 * 60 * 1000;
+const LEDGER_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 const CODE_TTL = 10 * 60 * 1000;
 const MAX_CODE_ATTEMPTS = 5;
 const EMAIL_WINDOW = 15 * 60 * 1000;
@@ -34,6 +36,7 @@ function originAllowed(origin, env) {
     env.APP_ORIGIN,
     `${env.APP_ORIGIN}/`,
     'https://dvesiz.github.io',
+    'https://chronos.local',
     'http://localhost:8787',
     'http://127.0.0.1:8787'
   ].filter(Boolean));
@@ -238,7 +241,7 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
       // 事件日志只用于「客户端增量拉取」，不是真相来源（sync_documents 才是）。
       // 只有所有活跃设备都确认过的事件才允许归档；没有设备游标时宁可不删。
       try {
-        const cursor = await env.DB.prepare('SELECT MIN(acknowledged_seq) AS min_ack FROM sync_devices WHERE user_id=? AND revoked_at IS NULL').bind(user.id).first();
+        const cursor = await env.DB.prepare('SELECT MIN(acknowledged_seq) AS min_ack FROM sync_devices WHERE user_id=? AND revoked_at IS NULL AND last_seen_at>?').bind(user.id, now() - DEVICE_IDLE_TTL).first();
         const minAck = Number(cursor?.min_ack);
         if (Number.isSafeInteger(minAck) && minAck > 0) {
           const retentionFloor = Math.max(0, serverSeq - MAX_EVENTS_PER_USER);
@@ -249,6 +252,12 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
         }
       } catch (pruneErr) {
         /* 归档失败不影响本次同步写入 */
+      }
+      // 幂等账本只需覆盖合理的重试窗口；过期记录清理，避免长期增长。
+      try {
+        await env.DB.prepare('DELETE FROM operation_ledger WHERE user_id=? AND created_at<?').bind(user.id, createdAt - LEDGER_RETENTION_MS).run();
+      } catch (ledgerPruneErr) {
+        /* 账本清理失败不影响本次同步写入 */
       }
       return { state: nextState, headSeq: serverSeq, revision: nextRevision, serverSeq, duplicate: false };
     } catch (err) {
@@ -277,11 +286,8 @@ async function syncEvents(request, env, user) {
   let headSeq = 0;
   let revision = 0;
   if (events.length) {
-    const first = events[0];
     const document = await env.DB.prepare('SELECT revision,head_seq FROM sync_documents WHERE user_id=?').bind(user.id).first();
     revision = Number(document?.revision || 0);
-    const requested = first.baseRevision === undefined ? Number(first.baseSeq || 0) : first.baseRevision;
-    if (requested !== revision) return json({ error: 'stale_revision', message: '云端版本已更新，请先拉取并合并', currentRevision: revision }, 409);
   }
   for (const event of events) {
     const checked = validateEvent(event);
@@ -348,7 +354,19 @@ async function syncAck(request, env, user) {
 
 async function syncDevices(env, user) {
   const rows = await env.DB.prepare('SELECT device_id,acknowledged_seq,last_seen_at,app_version,protocol_version,revoked_at FROM sync_devices WHERE user_id=? ORDER BY last_seen_at DESC').bind(user.id).all();
-  return json({ devices: rows.results || [] });
+  const cutoff = now() - DEVICE_IDLE_TTL;
+  const devices = (rows.results || []).map(row => ({
+    ...row,
+    status: row.revoked_at ? 'revoked' : (Number(row.last_seen_at || 0) > cutoff ? 'active' : 'dormant')
+  }));
+  return json({ devices, idleTtlMs: DEVICE_IDLE_TTL });
+}
+async function revokeDevice(request, env, user) {
+  const data = await bodyJson(request);
+  const deviceId = String(data.deviceId || '').trim().slice(0, 128);
+  if (!deviceId) return error('device_id_invalid', 400, '设备 ID 无效');
+  await env.DB.prepare('UPDATE sync_devices SET revoked_at=? WHERE user_id=? AND device_id=?').bind(now(), user.id, deviceId).run();
+  return json({ ok: true, deviceId, revoked: true });
 }
 
 async function syncHistory(request, env, user) {
@@ -479,6 +497,7 @@ export default {
       if (url.pathname === '/v1/sync/head' && request.method === 'GET') return withCors(await syncHead(env, user), cors);
       if (url.pathname === '/v1/sync/ack' && request.method === 'POST') return withCors(await syncAck(request, env, user), cors);
       if (url.pathname === '/v1/sync/devices' && request.method === 'GET') return withCors(await syncDevices(env, user), cors);
+      if (url.pathname === '/v1/sync/devices/revoke' && request.method === 'POST') return withCors(await revokeDevice(request, env, user), cors);
       if (url.pathname === '/v1/sync/events' && request.method === 'GET') return withCors(await syncHistory(request, env, user), cors);
       return withCors(error('not_found', 404), cors);
     } catch (err) {

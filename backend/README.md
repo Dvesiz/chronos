@@ -4,7 +4,7 @@ Cloudflare Worker API for Chronos accounts, local-first sync, feedback, and rele
 
 ## Local setup
 
-1. Install Node.js 20+ and Wrangler 4+.
+1. Install Node.js 22+ and Wrangler 4+.
 2. From this directory run `npm install`.
 3. Run local D1 migrations:
 
@@ -72,6 +72,9 @@ npm run deploy
 - `POST /v1/sync/events`: append idempotent state operations.
 - `GET /v1/sync/head`: read the latest server sequence.
 - `GET /v1/sync/events?after=<seq>`: read later events.
+- `POST /v1/sync/ack`: acknowledge a device sync cursor.
+- `GET /v1/sync/devices`: list active, dormant, and revoked devices.
+- `POST /v1/sync/devices/revoke`: revoke a device so it no longer blocks event archival.
 - `PATCH /v1/account/profile`: update nickname/avatar.
 - `DELETE /v1/account/delete`: permanently delete account and cloud data.
 - `POST /v1/feedback`: submit feedback.

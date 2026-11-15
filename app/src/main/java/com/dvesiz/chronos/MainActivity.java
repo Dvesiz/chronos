@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.AssetManager;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
@@ -25,8 +26,12 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 
 import org.json.JSONObject;
+
+import java.io.InputStream;
+import java.util.HashMap;
 
 public class MainActivity extends Activity {
 
@@ -67,11 +72,11 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
-        // 页面只允许从 android_asset 加载，导航白名单仍阻止外部页面调用 Native。
-        // 开启本地页面到 Worker 的 HTTPS 请求，兼容 Android WebView 的 file:// 来源。
-        s.setAllowFileAccess(true);
+        // 页面通过固定的 HTTPS 虚拟来源加载，导航白名单仍阻止外部页面调用 Native。
+        // 关闭 file:// 跨源能力，避免本地文件来源获得过宽的网络访问权限。
+        s.setAllowFileAccess(false);
         s.setAllowFileAccessFromFileURLs(false);
-        s.setAllowUniversalAccessFromFileURLs(true);
+        s.setAllowUniversalAccessFromFileURLs(false);
         s.setAllowContentAccess(true);   // 头像选择需要读 content:// 授权 URI
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
@@ -97,6 +102,17 @@ public class MainActivity extends Activity {
             @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 return !isLocalAsset(Uri.parse(url));
+            }
+
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
+                return openLocalAsset(req.getUrl());
+            }
+
+            @Override
+            @SuppressWarnings("deprecation")
+            public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+                return openLocalAsset(Uri.parse(url));
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -143,7 +159,7 @@ public class MainActivity extends Activity {
         applyInsetsListener();
         handleIntent(getIntent());
 
-        web.loadUrl("file:///android_asset/www/index.html");
+        web.loadUrl("https://chronos.local/assets/www/index.html");
         clearPendingIntentExtras();
     }
 
@@ -197,8 +213,31 @@ public class MainActivity extends Activity {
 
     private boolean isLocalAsset(Uri uri) {
         if (uri == null) return false;
-        String u = uri.toString();
-        return u.startsWith("file:///android_asset/") || u.startsWith("about:blank");
+        if ("about".equals(uri.getScheme())) return "blank".equals(uri.getSchemeSpecificPart());
+        return "https".equals(uri.getScheme())
+                && "chronos.local".equals(uri.getHost())
+                && uri.getPath() != null
+                && uri.getPath().startsWith("/assets/www/");
+    }
+
+    private WebResourceResponse openLocalAsset(Uri uri) {
+        if (!isLocalAsset(uri) || uri.getPath() == null || !uri.getPath().startsWith("/assets/")) return null;
+        String assetPath = uri.getPath().substring("/assets/".length());
+        try {
+            AssetManager assets = getAssets();
+            InputStream stream = assets.open(assetPath);
+            String mime = "application/octet-stream";
+            if (assetPath.endsWith(".html")) mime = "text/html";
+            else if (assetPath.endsWith(".css")) mime = "text/css";
+            else if (assetPath.endsWith(".js")) mime = "application/javascript";
+            else if (assetPath.endsWith(".svg")) mime = "image/svg+xml";
+            else if (assetPath.endsWith(".png")) mime = "image/png";
+            else if (assetPath.endsWith(".jpg") || assetPath.endsWith(".jpeg")) mime = "image/jpeg";
+            else if (assetPath.endsWith(".json")) mime = "application/json";
+            return new WebResourceResponse(mime, "UTF-8", 200, "OK", new HashMap<>(), stream);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 权限弹窗关掉后不回 onResume 的机型上，也要让页面刷新一次权限状态 */

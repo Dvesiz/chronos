@@ -53,8 +53,92 @@ test('账号切换时只上传当前账号的 Outbox 事件', async () => {
   assert.equal(posted.length, 0, '未归属账号的旧队列不得上传给新账号');
 });
 
+test('账号切换时不会把旧账号事件 rebase 成新账号事件', async () => {
+  const posted = [];
+  const legacyAccountEvent = {
+    eventId: 'account-a-event', deviceId: 'd', accountScope: 'account-a',
+    baseSeq: 1, baseRevision: 1,
+    ops: [{ op: 'set', path: ['privateA'], value: true }]
+  };
+  const harness = createHarness(async (url, options = {}) => {
+    const path = String(url);
+    if (path.includes('/v1/auth/verify')) return response({ accessToken: 'b', refreshToken: 'r', user: { id: 'account-b', email: 'b@example.com' } });
+    if (path.includes('/v1/sync/snapshot')) return response({ state: { remoteB: true }, headSeq: 2, revision: 2 });
+    if (path.includes('/v1/sync/events')) {
+      posted.push(JSON.parse(options.body));
+      return response({ accepted: posted.at(-1).events.map(event => ({ eventId: event.eventId })), headSeq: 2, revision: 2, state: { remoteB: true } });
+    }
+    throw new Error('unexpected request ' + path);
+  }, { 'chronos.cloud.queue.v1': JSON.stringify([legacyAccountEvent]) });
+  let current = { local: true };
+  harness.api.init({ get: () => current, apply: next => { current = next; } });
+  await harness.api.verify('b@example.com', '123456');
+  await tick();
+  assert.equal(posted.length, 0, '账号 A 的事件不得被包装成账号 B 的事件上传');
+  const stored = JSON.parse(harness.values.get('chronos.cloud.queue.v1') || '[]');
+  assert.ok(stored.some(event => event.eventId === 'account-a-event'), '账号 A 的事件必须保留');
+});
+
+test('拉取当前账号快照时不会删除其他账号的队列事件', async () => {
+  const otherAccountEvent = {
+    eventId: 'account-a-pending', deviceId: 'd', accountScope: 'account-a',
+    baseSeq: 1, baseRevision: 1,
+    ops: [{ op: 'set', path: ['privateA'], value: true }]
+  };
+  let snapshotCalls = 0;
+  const harness = createHarness(async url => {
+    const path = String(url);
+    if (path.includes('/v1/sync/head')) return response({ headSeq: 2, revision: 2 });
+    if (path.includes('/v1/sync/snapshot')) {
+      snapshotCalls++;
+      if (snapshotCalls === 1) return response({ state: { remoteB: true }, headSeq: 0, revision: 0 });
+      return response({ state: { remoteB: 2 }, headSeq: 2, revision: 2 });
+    }
+    throw new Error('unexpected request ' + path);
+  }, {
+    'chronos.cloud.session.v1': JSON.stringify({ accessToken: 'b', refreshToken: 'r', user: { id: 'account-b' } }),
+    'chronos.cloud.queue.v1': JSON.stringify([otherAccountEvent])
+  });
+  let current = { remoteB: 0 };
+  harness.api.init({ get: () => current, apply: next => { current = next; } });
+  await tick();
+  await harness.api.syncNow();
+  const stored = JSON.parse(harness.values.get('chronos.cloud.queue.v1') || '[]');
+  assert.ok(stored.some(event => event.eventId === 'account-a-pending'), '拉取账号 B 时必须保留账号 A 的待同步事件');
+});
+
+test('账号同步元数据按账号作用域隔离', async () => {
+  const posted = [];
+  const harness = createHarness(async (url, options = {}) => {
+    const path = String(url);
+    if (path.includes('/v1/sync/snapshot')) return response({ state: { remoteB: true }, headSeq: 0, revision: 0 });
+    if (path.includes('/v1/sync/events')) {
+      const body = JSON.parse(options.body);
+      posted.push(body);
+      return response({ accepted: body.events.map(event => ({ eventId: event.eventId })), headSeq: 1, revision: 1, state: { remoteB: true, localB: true } });
+    }
+    if (path.includes('/v1/sync/ack')) return response({ ok: true });
+    throw new Error('unexpected request ' + path);
+  }, {
+    'chronos.cloud.session.v1': JSON.stringify({ accessToken: 'b', refreshToken: 'r', user: { id: 'account-b' } }),
+    'chronos.cloud.head.v1': '42',
+    'chronos.cloud.revision.v1': '42',
+    'chronos.cloud.acknowledged.v1': JSON.stringify({ accountA: true })
+  });
+  let current = { remoteB: true };
+  harness.api.init({ get: () => current, apply: next => { current = next; } });
+  await tick();
+  current = { remoteB: true, localB: true };
+  harness.api.queueState(current);
+  await tick();
+  assert.ok(posted.length >= 1, '账号 B 的新事件应正常提交');
+  assert.equal(posted[0].baseRevision, 0, '账号 B 不得复用账号 A 的全局 revision');
+  assert.equal(harness.values.get('chronos.cloud.revision.v1'), '42', '旧版全局元数据必须保留，不得被账号 B 覆盖');
+  assert.equal(harness.values.get('chronos.cloud.revision.v1.v2.account-b'), '1', '账号 B 应写入自己的 revision');
+});
+
 test('replace_forbidden 只标记冲突，不删除本地事件', async () => {
-  const event = { eventId: 'replace-event', deviceId: 'd', baseSeq: 0, baseRevision: 0, ops: [{ op: 'replace', path: [], value: { local: true } }] };
+  const event = { eventId: 'replace-event', deviceId: 'd', accountScope: 'account-a', baseSeq: 0, baseRevision: 0, ops: [{ op: 'replace', path: [], value: { local: true } }] };
   const harness = createHarness(async url => {
     const path = String(url);
     if (path.includes('/v1/sync/snapshot')) return response({ state: { remote: true }, headSeq: 2, revision: 2 });
@@ -68,9 +152,11 @@ test('replace_forbidden 只标记冲突，不删除本地事件', async () => {
   let current = { local: true };
   harness.api.init({ get: () => current, apply: next => { current = next; } });
   await tick();
-  const stored = JSON.parse(harness.values.get('chronos.cloud.queue.v1') || '[]');
+  const stored = JSON.parse(harness.values.get('chronos.cloud.queue.v1.v2.account-a') || '[]');
   assert.ok(stored.some(item => item.eventId === 'replace-event'), '被拒事件必须保留');
   assert.equal(stored.find(item => item.eventId === 'replace-event').status, 'conflict');
+  const legacy = JSON.parse(harness.values.get('chronos.cloud.queue.v1') || '[]');
+  assert.ok(!legacy.some(item => item.eventId === 'replace-event'), '已迁移到账号队列的事件不得留在旧全局键中重复上传');
 });
 
 test('Tombstone 在 rebase 后仍随事件保留', () => {
