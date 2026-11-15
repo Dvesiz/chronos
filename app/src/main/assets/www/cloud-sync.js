@@ -452,7 +452,7 @@
       } else {
         (result.accepted || []).forEach(function (item) { accepted[item.eventId] = true; });
       }
-      await withWriteLock(function () {
+      await withQueueWriteLock(function () {
         state.queue = state.queue.filter(function (event) { return !accepted[event.eventId]; });
         persistQueue();
         setHeadSeq(result.headSeq || headSeq());
