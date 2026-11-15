@@ -68,4 +68,49 @@ const tick = () => new Promise(r => setImmediate(r));
   assert.ok(postCount >= 2, 'stale_revision 后必须重新上传 rebase 后事件');
   assert.ok(applied.some(next => next.remote === 2 && next.local === 1), 'rebase 后应应用远程状态与本地修改的合并结果');
   console.log('✓ stale_revision：拉取新版本后自动 rebase 并重试，队列不停止');
+
+  // 旧版本已经把 stale_revision 事件持久化成 rejected 时，升级后也必须自动恢复。
+  {
+    const values = new Map([
+      ['chronos.cloud.session.v1', JSON.stringify({ accessToken: 'a', refreshToken: 'r', user: { id: 'account-a' } })],
+      ['chronos.cloud.queue.v1.v2.account-a', JSON.stringify([{
+        eventId: 'legacy-stale', deviceId: 'device-a', accountScope: 'account-a', baseSeq: 1, baseRevision: 1,
+        status: 'rejected', error: 'stale_revision', ops: [{ op: 'set', path: ['local'], value: 1 }], queuedAt: 1, clientAt: 1
+      }])]
+    ]);
+    const localStorage = {
+      getItem: key => values.get(key) || null,
+      setItem: (key, value) => values.set(key, String(value)),
+      removeItem: key => values.delete(key)
+    };
+    let current = { local: 1 };
+    let postCount = 0;
+    const window = {
+      CHRONOS_API_BASE: 'https://api.example', localStorage,
+      AbortController, crypto: { randomUUID: () => 'legacy-retry' },
+      addEventListener: () => {}, setInterval: () => 1, setTimeout, clearTimeout
+    };
+    const document = { hidden: false, addEventListener: () => {} };
+    vm.runInNewContext(SOURCE, {
+      window, document, localStorage,
+      fetch: async (url, options = {}) => {
+        const path = String(url);
+        if (path.includes('/v1/sync/snapshot')) return response({ state: { remote: 2 }, headSeq: 2, revision: 2 });
+        if (path.includes('/v1/sync/events')) {
+          postCount++;
+          const event = JSON.parse(options.body).events[0];
+          return response({ accepted: [{ eventId: event.eventId }], headSeq: 3, revision: 3, state: { remote: 2, local: 1 } });
+        }
+        if (path.includes('/v1/sync/ack')) return response({ ok: true });
+        throw new Error('unexpected request ' + path);
+      },
+      AbortController, crypto: window.crypto, setTimeout, clearTimeout, console
+    });
+    window.ChronosCloud.init({ get: () => current, apply: next => { current = next; } });
+    for (let i = 0; i < 8 && postCount < 1; i++) await tick();
+    assert.equal(postCount, 1, '升级后旧 stale_revision 队列必须自动恢复并上传');
+    const stored = JSON.parse(values.get('chronos.cloud.queue.v1.v2.account-a') || '[]');
+    assert.equal(stored.length, 0, '成功上传后旧 rejected 事件必须从队列移除');
+    console.log('✓ legacy stale_revision：升级后自动恢复旧 rejected 队列');
+  }
 })().catch(error => { console.error('FAILED:', error.message); process.exit(1); });

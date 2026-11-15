@@ -26,6 +26,15 @@
     return normalized === null ? base : base + '.v2.' + encodeURIComponent(normalized);
   }
   function eventScope(event) { return normalizeScope(event && event.accountScope); }
+  function reviveRetryableEvents(queue) {
+    return (queue || []).map(function (event) {
+      if (!event || event.status !== 'rejected' || event.error !== 'stale_revision') return event;
+      var revived = Object.assign({}, event);
+      revived.status = 'pending';
+      delete revived.error;
+      return revived;
+    });
+  }
   function mergeQueues(primary, secondary) {
     var byId = {};
     (primary || []).concat(secondary || []).forEach(function (event) {
@@ -37,18 +46,20 @@
   }
   function readQueueForScope(scope) {
     var normalized = normalizeScope(scope);
-    var queue = read(scopedKey(QUEUE_KEY, normalized), []);
+    var queue = reviveRetryableEvents(read(scopedKey(QUEUE_KEY, normalized), []));
     if (normalized !== null) {
       var legacy = read(QUEUE_KEY, []);
-      var legacyForScope = legacy.filter(function (event) {
+      var legacyForScope = reviveRetryableEvents(legacy.filter(function (event) {
         return eventScope(event) === normalized;
-      });
+      }));
       queue = mergeQueues(queue, legacyForScope);
       if (legacyForScope.length) {
         write(QUEUE_KEY, legacy.filter(function (event) { return eventScope(event) !== normalized; }));
       }
     }
-    return (queue || []).filter(function (event) { return eventScope(event) === normalized; });
+    var scoped = (queue || []).filter(function (event) { return eventScope(event) === normalized; });
+    if (normalized !== null && JSON.stringify(scoped) !== JSON.stringify(queue)) write(scopedKey(QUEUE_KEY, normalized), scoped);
+    return scoped;
   }
   function writeQueueLocal(scope, queue) {
     var normalized = normalizeScope(scope);
@@ -110,7 +121,7 @@
         try {
           var req = db.transaction('outbox', 'readonly').objectStore('outbox').getAll();
           req.onsuccess = function () {
-            var rows = (req.result || []).filter(function (event) { return eventScope(event) === normalized; });
+            var rows = reviveRetryableEvents((req.result || []).filter(function (event) { return eventScope(event) === normalized; }));
             if (rows.length) {
               state.queue = mergeQueues(state.queue, rows);
               writeQueueLocal(normalized, state.queue);
@@ -145,7 +156,8 @@
     syncStatus: 'idle',
     retryAttempt: 0,
     retryTimer: null,
-    getLocalRevision: function () { return 0; }
+    getLocalRevision: function () { return 0; },
+    initialSyncInFlight: false
   };
 
   function clone(value) {
@@ -394,7 +406,7 @@
   }
   async function flush() {
     var pending = eligibleQueue();
-    if (!API_BASE || !state.loggedIn || state.syncing || !pending.length || state.queueHydrated === false) return;
+    if (!API_BASE || !state.loggedIn || state.syncing || state.initialSyncInFlight || !pending.length || state.queueHydrated === false) return;
     state.syncing = true;
     state.syncStatus = 'uploading';
     var uploaded = false;
@@ -679,7 +691,7 @@
       state.queueHydrated = false;
       state.queueReady = loadQueueFromIndexedDb(state.queueScope).then(function () {
         state.queueHydrated = true;
-        if (state.loggedIn) flush();
+        if (state.loggedIn && !state.initialSyncInFlight) flush();
       });
       state.queuedState = clone(state.get());
       // 新会话尚无待同步队列时，先固定启动时状态作为本地基线；
@@ -688,6 +700,7 @@
       state.loggedIn = !!read(SESSION_KEY, null);
       state.booted = true;
       if (state.loggedIn) {
+        state.initialSyncInFlight = true;
         // 打开页面时同样以云端为准：先丢掉旧队列，再拉快照覆盖本地。
         // 只有本地干净（无待传队列）时才直接覆盖，避免吞掉真正的未上传改动。
         request('/v1/sync/snapshot').then(async function (remote) {
@@ -700,8 +713,12 @@
               else applyRemote(remote.state, 'boot');
             }
           }
+          state.initialSyncInFlight = false;
           flush();
-        }).catch(function () { flush(); });
+        }).catch(function () {
+          state.initialSyncInFlight = false;
+          flush();
+        });
         startPolling();
       }
     },
