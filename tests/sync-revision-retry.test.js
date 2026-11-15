@@ -39,7 +39,18 @@ const tick = () => new Promise(r => setImmediate(r));
     }
     if (path.includes('/v1/sync/events')) {
       postCount++;
-      if (postCount === 1) return response({ error: 'stale_revision', currentRevision: 2 }, 409);
+      if (postCount === 1) return response({
+        accepted: [],
+        results: [{
+          eventId: JSON.parse(options.body).events[0].eventId,
+          status: 'rejected',
+          error: 'stale_revision',
+          currentRevision: 2
+        }],
+        headSeq: 2,
+        revision: 2,
+        state: { remote: 2 }
+      });
       return response({ accepted: [{ eventId: JSON.parse(options.body).events[0].eventId }], headSeq: 3, revision: 3, state: { remote: 2, local: 1 } });
     }
     throw new Error('unexpected request ' + path);

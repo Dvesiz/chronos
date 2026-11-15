@@ -412,10 +412,23 @@
       })
       });
       var accepted = {};
+      var resultHasStaleRevision = false;
       if (Array.isArray(result.results)) {
         result.results.forEach(function (item) {
           if (!item) return;
           if (item.status === 'accepted') accepted[item.eventId] = true;
+          // 批量接口可能已经接受了前面的事件，然后以 HTTP 200 在逐事件结果里
+          // 返回 stale_revision。这个事件必须保留为可重试状态，不能永久标记 rejected。
+          if (item.status === 'stale_revision' || item.error === 'stale_revision') {
+            resultHasStaleRevision = true;
+            state.queue.forEach(function (event) {
+              if (event.eventId === item.eventId) {
+                event.status = 'pending';
+                delete event.error;
+              }
+            });
+            return;
+          }
           if (item.status === 'conflict' || item.status === 'rejected') {
             state.queue.forEach(function (event) {
               if (event.eventId === item.eventId) { event.status = item.status; event.error = item.error || null; }
@@ -438,7 +451,10 @@
       }
       uploaded = true;
       state.retryAttempt = 0;
-      state.syncStatus = state.queue.some(function (event) { return event.status === 'conflict' || event.status === 'rejected'; })
+      if (resultHasStaleRevision) {
+        state.syncStatus = 'recovery_required';
+        retryAfterPull = true;
+      } else state.syncStatus = state.queue.some(function (event) { return event.status === 'conflict' || event.status === 'rejected'; })
         ? 'conflict' : (state.queue.length ? 'pending' : 'idle');
       notifyTabs();
     } catch (e) {
