@@ -4,6 +4,8 @@
 
 <img src="docs/img/logo.svg" width="112" alt="时序 · Chronos" />
 
+<p><a href="README.en.md">English README</a></p>
+
 ### 让每一段时间，都有明确的方向
 
 为学习、工作与长期目标打造的本地优先时间管理应用。用计划确定方向，用专注完成当下，用复盘看见长期变化。
@@ -26,9 +28,15 @@
 
 <div align="center">
 
+<p><strong>平板与桌面端</strong></p>
 <img src="docs/img/home.png" width="31%" alt="Chronos 今日计划" />
 <img src="docs/img/focus.png" width="31%" alt="Chronos 番茄钟" />
 <img src="docs/img/stats.png" width="31%" alt="Chronos 数据统计" />
+
+<p><strong>手机端</strong></p>
+<img src="docs/img/home-mobile.png" width="18%" alt="Chronos 手机端今日计划" />
+<img src="docs/img/focus-mobile.png" width="18%" alt="Chronos 手机端专注计时" />
+<img src="docs/img/stats-mobile.png" width="18%" alt="Chronos 手机端数据统计" />
 
 </div>
 
