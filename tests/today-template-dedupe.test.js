@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const SRC = fs.readFileSync('app/src/main/assets/www/app.js', 'utf8');
 const key = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const today = key(new Date());
-const doc = { querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}, createElement: () => ({ style: { setProperty() {} }, appendChild() {}, classList: { add() {}, remove() {}, toggle() {} } }) };
+const doc = { documentElement: { dataset: {} }, body: { classList: { toggle() {} } }, querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}, createElement: () => ({ style: { setProperty() {} }, appendChild() {}, classList: { add() {}, remove() {}, toggle() {} } }) };
 function ctx(seed) {
   const store = { 'chronos.state.v1': JSON.stringify(seed) };
   const c = { console, Date, Math, JSON, Number, String, Array, Object, Promise, setTimeout, clearTimeout,

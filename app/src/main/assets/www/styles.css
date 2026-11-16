@@ -150,7 +150,7 @@ body:not(.motion) .pages { transition: none; }
 }
 
 /* ============ 页头 ============ */
-.home-head { max-width: var(--maxw); margin: 0 auto; }
+.home-head { max-width: var(--maxw); margin: 0 auto 20px; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-mark { width: 26px; height: 26px; flex: none; display: inline-flex; }
 .brand-mark svg { display: block; width: 100%; height: 100%; }
@@ -165,15 +165,6 @@ body:not(.motion) .pages { transition: none; }
   text-transform: uppercase; letter-spacing: .08em;
 }
 .date-line .sep { flex: 1; height: 1px; background: var(--hairline); }
-
-.home-head h1 {
-  margin: 8px 0 20px;
-  font-size: 30px;
-  font-weight: 800;
-  line-height: 1.25;
-  letter-spacing: 0;
-  color: var(--ink);
-}
 
 .micro-label {
   font-size: 11px; font-weight: 600;
@@ -339,7 +330,6 @@ body:not(.motion) .pages { transition: none; }
 
 /* 小屏：进度卡收成一行，别把「今日安排」挤到折叠线以下 */
 @media (max-width: 520px) {
-  .home-head h1 { font-size: 25px; }
   .progress-card { padding: 16px; gap: 14px; }
   .ring-wrap { width: 84px; height: 84px; }
   .ring-center b { font-size: 24px; }
@@ -1178,7 +1168,6 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 @media (min-width: 760px) and (min-height: 600px) {
   :root { --pad-card: 22px; --gap-card: 20px; }
   .scroll { padding: calc(var(--sat) + 28px) 36px calc(var(--sab) + 128px); }
-  .home-head h1 { font-size: 34px; }
   .home-grid {
     display: grid;
     grid-template-columns: 1fr 1.06fr;
@@ -1236,7 +1225,6 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 
 @media (min-width: 760px) and (min-height: 900px) {
   html, body { font-size: 15px; }
-  .home-head h1 { font-size: 36px; }
   .ring-wrap { width: 120px; height: 120px; }
   .ring-center b { font-size: 32px; }
   .progress-meta .big { font-size: 58px; }
@@ -1252,7 +1240,6 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 
 @media (min-width: 900px) and (max-height: 860px) {
   .scroll { padding-top: calc(var(--sat) + 14px); }
-  .home-head h1 { font-size: 30px; margin: 8px 0 18px; }
   .date-line { margin-top: 14px; }
   .progress-card { padding: 18px; }
   .pomo-ring-wrap { width: 194px; height: 194px; margin: 20px 0 8px; }
@@ -1484,7 +1471,7 @@ body:not(.motion) .sheet-panel, body:not(.motion) .sheet-backdrop { transition: 
 .review-bar.is-done .rv-label,
 .review-bar.is-done .rv-text { color: var(--accent-deep); }
 
-.stats-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 24px; }
+.stats-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 20px 0 24px; }
 .stats-tools .range-seg { margin: 0; }
 
 .goal-card { padding: var(--pad-card); }

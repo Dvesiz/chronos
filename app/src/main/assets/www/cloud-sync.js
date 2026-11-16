@@ -212,6 +212,19 @@
     });
   }
   function isObject(value) { return value && typeof value === 'object' && !Array.isArray(value); }
+  function arrayItemId(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    if (typeof item.id === 'string' && item.id) return item.id;
+    if (typeof item.sessionId === 'string' && item.sessionId) return item.sessionId;
+    if (typeof item.taskId === 'string' && item.taskId) return item.taskId;
+    return null;
+  }
+  function keyedArray(value, path) {
+    if (!Array.isArray(value) || !path.length || ['tasks', 'partialFocus'].indexOf(path[path.length - 1]) < 0) return null;
+    var ids = value.map(arrayItemId);
+    if (ids.some(function (id) { return id === null; }) || new Set(ids).size !== ids.length) return null;
+    return ids;
+  }
   /**
    * 结构相等判断（替代每层递归都 JSON.stringify 的旧写法）。
    *
@@ -244,6 +257,24 @@
 
   function cloneOps(before, after, path, out) {
     if (sameValue(before, after)) return out;
+    if (Array.isArray(before) && Array.isArray(after)) {
+      var beforeIds = keyedArray(before, path);
+      var afterIds = keyedArray(after, path);
+      if (beforeIds && afterIds) {
+        var beforeById = new Map(before.map(function (item, index) { return [beforeIds[index], item]; }));
+        var afterSet = new Set(afterIds);
+        after.forEach(function (item, index) {
+          var id = afterIds[index];
+          var itemPath = path.concat('@id:' + id);
+          if (!beforeById.has(id)) out.push({ op: 'set', path: itemPath, value: clone(item) });
+          else cloneOps(beforeById.get(id), item, itemPath, out);
+        });
+        beforeIds.forEach(function (id) {
+          if (!afterSet.has(id)) out.push({ op: 'remove', path: path.concat('@id:' + id) });
+        });
+        return out;
+      }
+    }
     if (!isObject(before) || !isObject(after) || Array.isArray(before) || Array.isArray(after)) {
       out.push({ op: 'set', path: path, value: clone(after) });
       return out;
@@ -552,16 +583,35 @@
   }
   function applyLocalOps(value, ops) {
     var root = clone(value) || {};
+    function arrayIndex(array, segment) {
+      if (/^\d+$/.test(segment)) return Number(segment);
+      if (segment.indexOf('@id:') !== 0) return -1;
+      var id = segment.slice(4);
+      return array.findIndex(function (item) { return arrayItemId(item) === id; });
+    }
     (ops || []).forEach(function (op) {
       if (!op.path || !op.path.length) { if (op.op === 'replace') root = clone(op.value) || {}; return; }
       var parent = root;
       for (var i = 0; i < op.path.length - 1; i++) {
         var key = op.path[i];
-        if (!parent[key] || typeof parent[key] !== 'object') parent[key] = {};
-        parent = parent[key];
+        if (Array.isArray(parent)) {
+          var index = arrayIndex(parent, key);
+          if (index < 0 || !parent[index] || typeof parent[index] !== 'object') return;
+          parent = parent[index];
+        } else {
+          if (!parent[key] || typeof parent[key] !== 'object') parent[key] = {};
+          parent = parent[key];
+        }
       }
       var last = op.path[op.path.length - 1];
-      if (op.op === 'remove') delete parent[last];
+      if (Array.isArray(parent) && last.indexOf('@id:') === 0) {
+        var itemIndex = arrayIndex(parent, last);
+        if (op.op === 'remove') { if (itemIndex >= 0) parent.splice(itemIndex, 1); }
+        else if (op.op === 'set') {
+          if (itemIndex >= 0) parent[itemIndex] = clone(op.value);
+          else parent.push(clone(op.value));
+        }
+      } else if (op.op === 'remove') delete parent[last];
       else if (op.op === 'set') parent[last] = clone(op.value);
     });
     return root;

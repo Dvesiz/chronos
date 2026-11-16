@@ -171,6 +171,9 @@ let state = loadState();
 function applyCloudState(nextState, immediate) {
   if (!nextState || typeof nextState !== 'object') return;
   state = normalizeState(nextState);
+  applyTheme();
+  const themeControl = $('#setTheme');
+  if (themeControl) themeControl.value = state.theme;
   // 云端旧快照可能携带历史模板重复项，应用前先迁移今日计划，
   // 否则每次同步都会把旧模板再次叠加回来。
   dedupeTodayTemplateTasks(todayKey());
@@ -240,7 +243,7 @@ function normalizeState(s) {
   // 不能因此把 days / 番茄记录等历史数据一起丢掉。
   if (!s || typeof s !== 'object' || Array.isArray(s)) {
     s = {
-      theme: 'light',
+      theme: 'system',
       motion: true,
       remind: true,
       advance: 5,
@@ -252,6 +255,7 @@ function normalizeState(s) {
   if (!Array.isArray(s.template)) s.template = defaultTemplate();
   s.template = s.template.filter(t => t && typeof t === 'object' && isFinite(t.start) && isFinite(t.end));
   s.days = s.days || {};
+  if (!['system', 'light', 'dark'].includes(s.theme)) s.theme = 'system';
   // 导入的数据可能不干净：丢掉坏记录，别让后面的渲染直接崩掉
   Object.keys(s.days).forEach(k => {
     const rec = s.days[k];
@@ -1253,24 +1257,12 @@ function consumeNative() {
 }
 
 /* ---------------- 时间格式 ---------------- */
-function greetingFor(h) {
-  if (h < 5) return '夜深了，先好好休息。';
-  if (h < 9) return '今天，从第一段专注开始。';
-  if (h < 12) return '上午的专注，最值钱。';
-  if (h < 14) return '午休之后，继续推进。';
-  if (h < 17) return '现在，啃下最硬的那块。';
-  if (h < 19) return '黄昏时分，喘口气。';
-  if (h < 22) return '晚上的时间，也能拉开差距。';
-  return '今天，保持自己的节奏。';
-}
-
 /* ---------------- 首页渲染 ---------------- */
 function renderHome() {
   const rec = ensureToday();
   const d = new Date();
   $('#dow').textContent = DOW[d.getDay()];
   $('#dateText').textContent = `${d.getMonth() + 1} 月 ${d.getDate()} 日`;
-  $('#greeting').textContent = greetingFor(d.getHours());
 
   const tasks = rec.tasks || [];
   const total = tasks.length;
@@ -3776,8 +3768,23 @@ function calcStreak() {
 }
 
 /* ---------------- 设置 ---------------- */
+let themeMedia = null;
+let themeMediaListenerBound = false;
+
+function bindSystemTheme() {
+  if (themeMediaListenerBound || !window.matchMedia) return;
+  try {
+    themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => { if (state.theme === 'system') applyTheme(); };
+    if (themeMedia.addEventListener) themeMedia.addEventListener('change', onChange);
+    else if (themeMedia.addListener) themeMedia.addListener(onChange);
+    themeMediaListenerBound = true;
+  } catch (e) { themeMedia = null; }
+}
+
 function applyTheme() {
-  const dark = state.theme === 'dark';
+  bindSystemTheme();
+  const dark = state.theme === 'dark' || (state.theme === 'system' && !!(themeMedia && themeMedia.matches));
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.body.classList.toggle('motion', !!state.motion);
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -3789,7 +3796,7 @@ function applyTheme() {
 function bindSettings() {
   $('#setReminder').checked = state.remind;
   $('#setAdvance').value = String(state.advance);
-  $('#setDark').checked = state.theme === 'dark';
+  $('#setTheme').value = state.theme;
   $('#setMotion').checked = state.motion;
   $('#setPomoPreset').value = String(state.pomo.preset);
   $('#setPomoAuto').checked = state.pomo.auto;
@@ -3807,8 +3814,8 @@ function bindSettings() {
     save(true);
     toast(state.advance ? `提前 ${state.advance} 分钟提醒` : '已关闭提前提醒');
   });
-  $('#setDark').addEventListener('change', e => {
-    state.theme = e.target.checked ? 'dark' : 'light';
+  $('#setTheme').addEventListener('change', e => {
+    state.theme = e.target.value;
     applyTheme(); save(true); haptic('light');
   });
   $('#setMotion').addEventListener('change', e => {
@@ -4212,10 +4219,10 @@ async function boot() {
     }
   } catch (e) {}
   state = await loadStateAsync();
-  initCloudSync();
   settleStaleTimers(); // 前一天忘了停的计时先按 0 点结算
   ensureToday();
   tickPomo();          // 先把"启动前就已到点"的番茄结算掉，避免带着过期 endAt 去起守护
+  initCloudSync();
   applyTheme();
   bindSettings();
   bindSettingsStatic();

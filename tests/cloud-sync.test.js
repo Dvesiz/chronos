@@ -148,6 +148,58 @@ test('rebases pending local edits onto a newer remote snapshot', async () => {
   assert.equal(posts, 2, 'rebased local changes should be uploaded');
 });
 
+test('rebases a task field edit without erasing a remote running timer', async () => {
+  const id = '2026-11-17:t1';
+  const base = { days: { d: { tasks: [{ id, title: '数学', status: 'todo', focusStart: null, focusAcc: 0, note: '' }] } } };
+  let remote = base;
+  let remoteSeq = 1;
+  let current = base;
+  let posts = 0;
+  let lastOps = null;
+  const harness = createHarness(async (url, options = {}) => {
+    const path = String(url);
+    if (path.includes('/v1/sync/head')) return response({ headSeq: remoteSeq, revision: remoteSeq });
+    if (path.includes('/v1/sync/snapshot')) return response({ state: remote, headSeq: remoteSeq, revision: remoteSeq });
+    if (path.includes('/v1/sync/events')) {
+      posts++;
+      const body = JSON.parse(options.body);
+      lastOps = body.events[0].ops;
+      if (posts === 1) return response({ error: 'offline' }, 503);
+      remote = {
+        days: { d: { tasks: [{ id, title: '数学', status: 'doing', focusStart: 12345, focusAcc: 90, note: '平板备注' }] } }
+      };
+      return response({ accepted: [{ eventId: body.events[0].eventId }], headSeq: 3, revision: 3, state: remote });
+    }
+    if (path.includes('/v1/sync/ack')) return response({ ok: true });
+    throw new Error(`unexpected request ${url}`);
+  });
+  harness.api.init({ get: () => current, apply: state => { current = state; } });
+  await tick();
+
+  current.days.d.tasks[0].note = '平板备注';
+  harness.api.queueState(current);
+  await tick();
+  assert.equal(posts, 1, '平板本地编辑应先进入可重试队列');
+
+  remote = {
+    days: { d: { tasks: [{ id, title: '数学', status: 'doing', focusStart: 12345, focusAcc: 90, note: '' }] } }
+  };
+  remoteSeq = 2;
+  harness.intervals.find(timer => timer.ms <= 10000).callback();
+  await tick();
+  await tick();
+
+  const task = current.days.d.tasks[0];
+  assert.equal(task.note, '平板备注', '平板的字段改动应保留');
+  assert.equal(task.status, 'doing', '手机的运行状态应保留');
+  assert.equal(task.focusStart, 12345, '手机计时起点应保留');
+  assert.equal(task.focusAcc, 90, '手机累计时长应保留');
+  assert.deepEqual(JSON.parse(JSON.stringify(lastOps)), [{
+    op: 'set', path: ['days', 'd', 'tasks', '@id:' + id, 'note'], value: '平板备注'
+  }], '重试事件只应提交平板实际修改的字段');
+  assert.equal(posts, 2, 'rebase 后的本地字段改动应重试上传');
+});
+
 test('flushes events queued while another upload is in flight', async () => {
   const firstUpload = deferred();
   let postCount = 0;

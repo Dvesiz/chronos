@@ -7,7 +7,7 @@
 
   function browserDemoState() {
     return {
-      theme: 'light', motion: true, remind: true, advance: 5,
+      theme: 'system', motion: true, remind: true, advance: 5,
       template: [
         { id: 't1', title: '晨间规划', subject: '工作', start: 480, end: 540, note: '梳理今日待办 · 轻量热身', reminder: true, advance: 5, flex: true },
         { id: 't2', title: '深度工作', subject: '工作', start: 540, end: 720, note: '最重要的事 · 关闭通知', reminder: true, advance: 5, flex: true },

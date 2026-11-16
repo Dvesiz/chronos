@@ -84,6 +84,58 @@ function loadClient() {
     console.log('✓ P1-2 diff：结构比较与旧实现行为等价（只产出变化字段）');
   }
 
+  // ---------- 任务数组按稳定 ID 输出字段级变更 ----------
+  {
+    let state = {
+      days: { d: { tasks: [{ id: 't1', title: '数学', status: 'todo', focusStart: null, note: '' }] } }
+    };
+    const harness = (() => {
+      const values = new Map();
+      const localStorage = {
+        getItem: k => (values.has(k) ? values.get(k) : null),
+        setItem: (k, v) => values.set(k, String(v)),
+        removeItem: k => values.delete(k)
+      };
+      values.set('chronos.cloud.session.v1', JSON.stringify({ accessToken: 'a', refreshToken: 'r' }));
+      const window = {
+        CHRONOS_API_BASE: 'https://api.example', localStorage, AbortController,
+        crypto: { randomUUID: () => 'e-' + Math.random() },
+        confirm: () => true, addEventListener: () => {},
+        setInterval: () => 1, setTimeout, clearTimeout
+      };
+      const document = { hidden: false, addEventListener: () => {} };
+      vm.runInNewContext(CLIENT, {
+        window, document, localStorage,
+        fetch: async () => ({ ok: false, status: 503, json: async () => ({ error: 'offline' }) }),
+        AbortController, crypto: window.crypto, setTimeout, clearTimeout, console,
+        setInterval: window.setInterval, clearInterval: () => {}
+      });
+      return { api: window.ChronosCloud, values };
+    })();
+
+    harness.api.init({ get: () => state, apply: next => { state = next; } });
+    await new Promise(r => setImmediate(r));
+    state.days.d.tasks[0].note = '错题整理';
+    harness.api.queueState(state);
+    const queued = JSON.parse(harness.values.get('chronos.cloud.queue.v1') || '[]');
+    const ops = queued.at(-1).ops;
+    assert.deepEqual(JSON.parse(JSON.stringify(ops)), [{
+      op: 'set', path: ['days', 'd', 'tasks', '@id:t1', 'note'], value: '错题整理'
+    }], '只改一个任务字段时，不应提交整个任务对象');
+
+    const { applyOps } = await import('../backend/src/core.js');
+    const remote = {
+      days: { d: { tasks: [{ id: 't1', title: '数学', status: 'doing', focusStart: 12345, focusAcc: 90, note: '' }] } }
+    };
+    const merged = applyOps(remote, ops);
+    const task = merged.days.d.tasks[0];
+    assert.equal(task.note, '错题整理');
+    assert.equal(task.status, 'doing');
+    assert.equal(task.focusStart, 12345);
+    assert.equal(task.focusAcc, 90);
+    console.log('✓ 同步任务字段：设备只改备注时保留远端计时状态');
+  }
+
   // ---------- P1-3：不同 id 的元素互不覆盖 ----------
   {
     const mod = await import('../backend/src/core.js');

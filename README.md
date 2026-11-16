@@ -9,14 +9,14 @@
 为学习、工作与长期目标打造的本地优先时间管理应用。用计划确定方向，用专注完成当下，用复盘看见长期变化。
 
 <p>
-  <a href="https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.12.apk"><strong>下载 Android APK</strong></a>
+  <a href="https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.13.apk"><strong>下载 Android APK</strong></a>
   ·
   <a href="https://dvesiz.github.io/chronos/app/"><strong>在线体验</strong></a>
   ·
   <a href="https://dvesiz.github.io/chronos/"><strong>产品官网</strong></a>
 </p>
 
-[![Version](https://img.shields.io/badge/version-2.7.12-FF5A1F?style=flat-square)](https://github.com/Dvesiz/chronos/releases/tag/v2.7.12)
+[![Version](https://img.shields.io/badge/version-2.7.13-FF5A1F?style=flat-square)](https://github.com/Dvesiz/chronos/releases/tag/v2.7.13)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://github.com/Dvesiz/chronos/releases/latest)
 [![Pages](https://img.shields.io/github/actions/workflow/status/Dvesiz/chronos/pages.yml?branch=main&label=GitHub%20Pages&style=flat-square)](https://github.com/Dvesiz/chronos/actions/workflows/pages.yml)
 [![Release](https://img.shields.io/github/actions/workflow/status/Dvesiz/chronos/release.yml?branch=main&label=release&style=flat-square)](https://github.com/Dvesiz/chronos/actions/workflows/release.yml)
@@ -95,7 +95,7 @@ Chronos 不只是一个待办清单。它把一天组织成可执行的时间段
 
 ### Android APK
 
-[下载 Chronos 2.7.12](https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.12.apk) · [查看全部 Releases](https://github.com/Dvesiz/chronos/releases)
+[下载 Chronos 2.7.13](https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.13.apk) · [查看全部 Releases](https://github.com/Dvesiz/chronos/releases)
 
 Android 8.0 及以上可用。APK 不依赖 Gradle，安装后即可使用。首次从文件安装时，按系统提示允许当前文件管理器安装未知来源应用即可。
 
@@ -212,6 +212,7 @@ chronos/
 
 | 版本 | 主要变化 |
 |:---|:---|
+| **2.7.13** | 修复设备启动时旧计划覆盖云端运行计时；任务同步改为按稳定 ID 提交字段差异；移除页面顶部激励标题，增加系统跟随主题。 |
 | **2.7.7** | 番茄钟加入正计时；完成平板设置页布局、安全区域和系统 inset 修复；同步状态 schema v3 与本地持久化收口。 |
 | **2.7.8** | 修复批量同步遇到 stale revision 后事件被永久标记为 rejected，恢复自动拉取、rebase 与重试。 |
 | **2.7.9** | 兼容升级前已卡住的同步队列，并修复启动对账与队列 hydration 并发造成的重复提交。 |

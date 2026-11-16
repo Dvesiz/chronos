@@ -9,11 +9,11 @@
 <meta property="og:description" content="计划、专注、复盘，一个闭环。">
 <meta property="og:type" content="website">
 <title>时序 · Chronos 在线体验</title>
-<link rel="stylesheet" href="styles.css?v=2f7a11c">
-<script src="browser-adapter.js?v=2f7a11c"></script>
-<script src="cloud-config.js?v=2f7a11c"></script>
-<script src="error-report.js?v=2f7a11c"></script>
-<script src="cloud-sync.js?v=2f7a11c"></script>
+<link rel="stylesheet" href="styles.css?v=2.7.13">
+<script src="browser-adapter.js?v=2.7.13"></script>
+<script src="cloud-config.js?v=2.7.13"></script>
+<script src="error-report.js?v=2.7.13"></script>
+<script src="cloud-sync.js?v=2.7.13"></script>
 </head>
 <body>
 
@@ -35,7 +35,6 @@
             <span class="live-clock" id="liveClock">--:--</span>
           </div>
           <div class="date-line"><span id="dow">MONDAY</span><span class="sep"></span><span id="dateText">10 月 26 日</span></div>
-          <h1 id="greeting">今天，保持自己的节奏。</h1>
         </header>
 
         <div class="home-grid">
@@ -109,7 +108,6 @@
             <span class="live-clock" id="clockFocus">--:--</span>
           </div>
           <div class="date-line"><span>FOCUS</span><span class="sep"></span><span>番茄专注</span></div>
-          <h1>把注意力，<br>交给这一小段。</h1>
         </header>
 
         <div class="focus-grid">
@@ -199,7 +197,6 @@
             <span class="live-clock" id="clockStats">--:--</span>
           </div>
           <div class="date-line"><span>STATISTICS</span><span class="sep"></span><span>数据统计</span></div>
-          <h1>把时间，<br>变成看得见的进步。</h1>
           <div class="stats-tools">
             <div class="seg range-seg" id="rangeSeg">
               <button data-range="7" class="on">近 7 天</button>
@@ -274,7 +271,6 @@
             <span class="live-clock" id="clockSettings">--:--</span>
           </div>
           <div class="date-line"><span>SETTINGS</span><span class="sep"></span><span>偏好设置</span></div>
-          <h1>安静地提醒，<br>不打扰你的专注。</h1>
         </header>
 
         <div class="settings-grid">
@@ -364,8 +360,12 @@
             <div class="list-card glass">
               <div class="row">
                 <div class="row-icon icon-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/></svg></div>
-                <div class="row-body"><div class="row-title">深色模式</div><div class="row-sub">夜间学习更柔和</div></div>
-                <label class="switch"><input type="checkbox" id="setDark"><i></i></label>
+                <div class="row-body"><div class="row-title">主题模式</div><div class="row-sub">跟随系统，或手动固定浅色 / 深色</div></div>
+                <select class="mini-select" id="setTheme" aria-label="主题模式">
+                  <option value="system">跟随系统</option>
+                  <option value="light">浅色</option>
+                  <option value="dark">深色</option>
+                </select>
               </div>
               <div class="row">
                 <div class="row-icon icon-pink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 15c2-1 3 1 5 0s3 1 5 0 3 1 6 0"/><path d="M4 9c2-1 3 1 5 0s3 1 5 0 3 1 6 0"/></svg></div>
@@ -421,7 +421,7 @@
               </div>
               <div class="about-title">时序 · Chronos</div>
               <div class="about-sub">让每一段时间，都有明确的方向。</div>
-              <div class="about-ver" id="aboutVer">Version 2.7.11 · 个人版</div>
+              <div class="about-ver" id="aboutVer">Version 2.7.13 · 个人版</div>
               <div class="about-hint" id="envHint"></div>
               <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
                 <button class="pill-btn" id="btnSyncNow">立即同步</button>
@@ -534,6 +534,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=2f7a11c"></script>
+<script src="app.js?v=2.7.13"></script>
 </body>
 </html>

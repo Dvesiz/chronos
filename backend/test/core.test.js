@@ -31,6 +31,10 @@ test('rejects oversized or unsafe sync events', () => {
     clientAt: 1730000000000
   });
   assert.equal(valid.ok, true);
+  assert.equal(validateEvent({
+    eventId: 'evt-field-path', deviceId: 'dev-1', baseSeq: 1,
+    ops: [{ op: 'set', path: ['days', 'd', 'tasks', '@id:t1', 'status'], value: 'doing' }]
+  }).ok, true, 'stable array ID path should be accepted');
   assert.equal(validateEvent({ eventId: 'x', deviceId: 'd', baseSeq: -1, ops: [] }).ok, false);
   assert.equal(validateEvent({ eventId: 'x', deviceId: 'd', baseSeq: 0, ops: [{ op: 'drop-table', path: [] }] }).ok, false);
 });
@@ -49,6 +53,33 @@ test('applies set, remove and replace operations without mutating input', () => 
   const replaced = applyOps(before, [{ op: 'replace', path: [], value: DEFAULT_STATE }]);
   assert.notEqual(replaced, DEFAULT_STATE);
   assert.deepEqual(replaced, DEFAULT_STATE);
+});
+
+test('applies stable task field paths without replacing concurrent timer fields', () => {
+  const remote = {
+    days: {
+      '2026-11-17': {
+        tasks: [{ id: '2026-11-17:t1', title: '数学', status: 'doing', focusStart: 1731840000000, focusAcc: 120 }]
+      }
+    }
+  };
+  const next = applyOps(remote, [{
+    op: 'set', path: ['days', '2026-11-17', 'tasks', '@id:2026-11-17:t1', 'note'], value: '错题整理'
+  }]);
+  const task = next.days['2026-11-17'].tasks[0];
+  assert.equal(task.note, '错题整理');
+  assert.equal(task.status, 'doing', '只改备注不能覆盖远端正在运行的任务状态');
+  assert.equal(task.focusStart, 1731840000000, '只改备注不能清除远端计时起点');
+  assert.equal(task.focusAcc, 120, '只改备注不能覆盖已累计时长');
+  assert.equal(remote.days['2026-11-17'].tasks[0].note, undefined, '操作不能修改输入快照');
+});
+
+test('adds and removes array elements by stable id paths', () => {
+  const before = { days: { d: { tasks: [{ id: 't1', title: 'A' }] } } };
+  const added = applyOps(before, [{ op: 'set', path: ['days', 'd', 'tasks', '@id:t2'], value: { id: 't2', title: 'B' } }]);
+  assert.deepEqual(added.days.d.tasks.map(task => task.id), ['t1', 't2']);
+  const removed = applyOps(added, [{ op: 'remove', path: ['days', 'd', 'tasks', '@id:t1'] }]);
+  assert.deepEqual(removed.days.d.tasks.map(task => task.id), ['t2']);
 });
 
 test('creates deterministic operations for changed state', () => {

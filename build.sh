@@ -6,7 +6,7 @@ BT="${ANDROID_BUILD_TOOLS:-$SDK/build-tools/35.0.0}"
 AJ="${ANDROID_JAR:-$SDK/platforms/android-35/android.jar}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SRC=$ROOT/app/src/main
-OUT=$ROOT/build
+OUT="${CHRONOS_BUILD_DIR:-$ROOT/build}"
 # Windows ships a different `find.exe`; prefer the POSIX tool in MSYS/Git Bash.
 FIND_BIN="${FIND_BIN:-/usr/bin/find}"
 # 版本号只从 manifest 取，避免脚本、界面、README 三处各写一遍

@@ -68,6 +68,14 @@ function validPath(path) {
       && !FORBIDDEN_KEYS.has(segment));
 }
 
+function arrayIndex(array, segment) {
+  if (/^\d+$/.test(segment)) return Number(segment);
+  if (!segment.startsWith('@id:')) return -1;
+  const id = segment.slice(4);
+  return array.findIndex(item => item && typeof item === 'object'
+    && [item.id, item.sessionId, item.taskId].some(value => typeof value === 'string' && value === id));
+}
+
 function validOp(op) {
   return op && (op.op === 'set' || op.op === 'remove' || op.op === 'replace')
     && validPath(op.path)
@@ -115,12 +123,18 @@ export function validateEvent(event) {
 function getParent(root, path, create) {
   let current = root;
   for (const segment of path) {
-    if (!current || typeof current !== 'object' || Array.isArray(current) && !/^\d+$/.test(segment)) return null;
-    if (!(segment in current)) {
-      if (!create) return null;
-      current[segment] = {};
+    if (!current || typeof current !== 'object') return null;
+    if (Array.isArray(current)) {
+      const index = arrayIndex(current, segment);
+      if (index < 0 || index >= current.length) return null;
+      current = current[index];
+    } else {
+      if (!(segment in current)) {
+        if (!create) return null;
+        current[segment] = {};
+      }
+      current = current[segment];
     }
-    current = current[segment];
   }
   return current;
 }
@@ -185,6 +199,12 @@ function setAt(root, path, value) {
   const parent = getParent(root, path.slice(0, -1), true);
   if (!parent) return root;
   const key = path[path.length - 1];
+  if (Array.isArray(parent) && key.startsWith('@id:')) {
+    const index = arrayIndex(parent, key);
+    if (index >= 0) parent[index] = clone(value);
+    else parent.push(clone(value));
+    return root;
+  }
   const prev = parent[key];
   // 同一天的 tasks / partialFocus：只要两边都能按 id 对齐，就按元素合并，
   // 而不是让后到的整块覆盖先到的（两台设备各改一条任务时不再互相抹掉）。
@@ -201,7 +221,10 @@ function removeAt(root, path) {
   const parent = getParent(root, path.slice(0, -1), false);
   if (!parent) return root;
   const key = path[path.length - 1];
-  if (Array.isArray(parent)) parent.splice(Number(key), 1);
+  if (Array.isArray(parent)) {
+    const index = arrayIndex(parent, key);
+    if (index >= 0 && index < parent.length) parent.splice(index, 1);
+  }
   else delete parent[key];
   return root;
 }
