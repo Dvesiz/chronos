@@ -81,6 +81,7 @@
         req.onupgradeneeded = function () { req.result.createObjectStore('outbox', { keyPath: 'eventId' }); };
         req.onsuccess = function () { resolve(req.result); };
         req.onerror = function () { resolve(null); };
+        req.onblocked = function () { resolve(null); };
       } catch (e) { resolve(null); }
     });
     return outboxDbPromise;
@@ -308,6 +309,44 @@
     }
   }
 
+  var refreshInFlight = null;
+  function refreshSession(expired) {
+    if (refreshInFlight && refreshInFlight.token === expired.refreshToken) return refreshInFlight.promise;
+    var flight = { token: expired.refreshToken };
+    var refresh = async function () {
+      var current = read(SESSION_KEY, null);
+      if (!current || current.user?.id !== expired.user?.id) return null;
+      // Another tab or request may already have rotated these credentials.
+      if (current.accessToken !== expired.accessToken) return current;
+      var response = await fetchWithTimeout(API_BASE + '/v1/auth/refresh', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refreshToken: current.refreshToken })
+      });
+      var next = response.ok ? await response.json() : null;
+      var latest = read(SESSION_KEY, null);
+      if (!latest || latest.user?.id !== expired.user?.id) return null;
+      if (latest.accessToken !== current.accessToken) return latest;
+      if (next && next.accessToken && next.refreshToken) {
+        write(SESSION_KEY, next);
+        return next;
+      }
+      if (response.status >= 500 || response.status === 429) {
+        var error = new Error('cloud_refresh_unavailable');
+        error.code = error.message;
+        throw error;
+      }
+      return null;
+    };
+    var locks = global.navigator && global.navigator.locks;
+    flight.promise = Promise.resolve().then(function () {
+      return locks && typeof locks.request === 'function' ? locks.request('chronos-auth-refresh', refresh) : refresh();
+    }).finally(function () {
+      if (refreshInFlight === flight) refreshInFlight = null;
+    });
+    refreshInFlight = flight;
+    return flight.promise;
+  }
+
   async function request(path, options) {
     if (!API_BASE) throw new Error('cloud_disabled');
     var opts = options || {};
@@ -316,14 +355,9 @@
     if (session && session.accessToken) headers.authorization = 'Bearer ' + session.accessToken;
     var requestOpts = Object.assign({}, opts, { headers: headers });
     var response = await fetchWithTimeout(API_BASE + path, requestOpts);
-    if (response.status === 401 && session && session.refreshToken && path !== '/v1/auth/refresh') {
-      var refreshed = await fetchWithTimeout(API_BASE + '/v1/auth/refresh', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ refreshToken: session.refreshToken })
-      });
-      if (refreshed.ok) {
-        var next = await refreshed.json();
-        write(SESSION_KEY, next);
+    if (response.status === 401 && session && session.refreshToken && (path.indexOf('/v1/auth/') !== 0 || path === '/v1/auth/logout')) {
+      var next = await refreshSession(session);
+      if (next) {
         headers.authorization = 'Bearer ' + next.accessToken;
         response = await fetchWithTimeout(API_BASE + path, Object.assign({}, opts, { headers: headers }));
       }
@@ -334,6 +368,12 @@
       var err = new Error(payload && payload.message || 'cloud_request_failed');
       err.code = payload && payload.error || 'cloud_request_failed';
       throw err;
+    }
+    if (payload && payload.state && (path === '/v1/sync/snapshot' || path === '/v1/sync/events')) {
+      // Older clients may have included a profile in the shared document.
+      var businessState = Object.assign({}, payload.state);
+      delete businessState.user;
+      payload = Object.assign({}, payload, { state: businessState });
     }
     return payload;
   }
@@ -488,8 +528,20 @@
         persistQueue();
         setHeadSeq(result.headSeq || headSeq());
         setRevision(result.revision == null ? revision() : result.revision);
+        if (result.state && !resultHasStaleRevision && Object.keys(accepted).length &&
+            !state.queue.some(function (event) { return event.status === 'conflict' || event.status === 'rejected'; })) {
+          var unsaved = diff(state.queuedState, state.get());
+          var merged = result.state;
+          eligibleQueue().forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
+          state.queuedState = clone(merged);
+          // Keep edits made while the request was in flight, including debounced saves.
+          var visible = applyLocalOps(merged, unsaved);
+          if (JSON.stringify(visible) !== JSON.stringify(state.get())) {
+            backupLocal('upload');
+            state.apply(visible, true);
+          }
+        }
         setAcknowledged(result.state || state.queuedState);
-        state.queuedState = clone(result.state || state.queuedState);
       });
       if (result.headSeq != null && accepted && Object.keys(accepted).length) {
         request('/v1/sync/ack', { method: 'POST', body: JSON.stringify({ deviceId: deviceId(), ackServerSeq: result.headSeq, appVersion: APP_VERSION, protocolVersion: 2 }) }).catch(function () {});
@@ -539,7 +591,7 @@
     }
   }
   async function pullLatest(forceSnapshot) {
-    if (!API_BASE || !state.loggedIn || !state.booted || state.pulling || state.syncing) return;
+    if (!API_BASE || !state.loggedIn || !state.booted || state.initialSyncInFlight || state.pulling || state.syncing) return;
     state.pulling = true;
     state.syncStatus = 'pulling';
     var localRevisionAtStart = Number(state.getLocalRevision() || 0);
@@ -709,6 +761,10 @@
   global.ChronosCloud = {
     enabled: function () { return !!API_BASE; },
     hasSession: function () { return !!read(SESSION_KEY, null); },
+    sessionUser: function () {
+      var session = read(SESSION_KEY, null);
+      return session && session.user || null;
+    },
     sendCode: async function (email) { return request('/v1/auth/send-code', { method: 'POST', body: JSON.stringify({ email }) }).then(function () { return { mode: 'sent' }; }); },
     verify: async function (email, code) {
       var result = await request('/v1/auth/verify', { method: 'POST', body: JSON.stringify({ email: email, code: code, deviceId: deviceId() }) });
@@ -764,21 +820,20 @@
       if (state.loggedIn) {
         state.initialSyncInFlight = true;
         state.syncStatus = 'pulling';
-        // 打开页面时同样以云端为准：先丢掉旧队列，再拉快照覆盖本地。
-        // 只有本地干净（无待传队列）时才直接覆盖，避免吞掉真正的未上传改动。
-        request('/v1/sync/snapshot').then(async function (remote) {
+        // Recover persisted edits before deciding whether a snapshot can replace local state.
+        state.queueReady.then(function () { return request('/v1/sync/snapshot'); }).then(async function (remote) {
           if (remote && remote.state) {
             setHeadSeq(remote.headSeq || 0);
             setRevision(remote.revision == null ? revision() : remote.revision);
             setAcknowledged(remote.state);
             if (Number(remote.headSeq || 0) > 0) {
-              setAcknowledged(remote.state);
               if (state.queue.length) await rebaseQueue(remote.state, remote.headSeq || 0);
               else applyRemote(remote.state, 'boot');
             }
           }
           state.lastError = null;
           state.lastSyncAt = Date.now();
+          state.syncStatus = state.queue.length ? 'pending' : 'idle';
           state.initialSyncInFlight = false;
           flush();
         }).catch(function (e) {

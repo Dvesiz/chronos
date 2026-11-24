@@ -168,9 +168,22 @@ function localRevision() {
 /* ---------------- 状态 ---------------- */
 let state = loadState();
 
+function cloudState() {
+  const { user, ...data } = state;
+  return data;
+}
+
+function cloudAccount() {
+  const cloud = window.ChronosCloud;
+  const user = cloud && cloud.sessionUser ? cloud.sessionUser() : null;
+  return user && state.user && state.user.email === user.email ? state.user : user;
+}
+
 function applyCloudState(nextState, immediate) {
   if (!nextState || typeof nextState !== 'object') return;
+  const user = cloudAccount();
   state = normalizeState(nextState);
+  state.user = user;
   applyTheme();
   const themeControl = $('#setTheme');
   if (themeControl) themeControl.value = state.theme;
@@ -185,15 +198,16 @@ function applyCloudState(nextState, immediate) {
 
 function initCloudSync() {
   if (!window.ChronosCloud) return;
+  if (window.ChronosCloud.hasSession()) state.user = cloudAccount();
   window.ChronosCloud.init({
-    get: () => state,
+    get: cloudState,
     apply: applyCloudState,
     getLocalRevision: () => localRevision()
   });
 }
 
 function queueCloudSync() {
-  if (window.ChronosCloud && window.ChronosCloud.queueState) window.ChronosCloud.queueState(state);
+  if (window.ChronosCloud && window.ChronosCloud.queueState) window.ChronosCloud.queueState(cloudState());
 }
 
 function loadState() {

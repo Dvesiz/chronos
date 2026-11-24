@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
-const app = fs.readFileSync('app/src/main/assets/www/app.js', 'utf8');
+const app = fs.readFileSync('app/src/main/assets/www/app.js', 'utf8').replace(/\r\n/g, '\n');
 const bootStart = app.indexOf('async function boot() {');
 const bootEnd = app.indexOf('\n}\n', bootStart);
 assert.ok(bootStart >= 0 && bootEnd > bootStart, '需要找到应用启动流程');

@@ -85,4 +85,17 @@ assert.equal(themeControl.value, 'system', '云端下发的主题模式应更新
 assert.equal(root.dataset.theme, 'dark', '云端下发系统模式应按本机当前深色偏好显示');
 assert.equal(vm.runInContext('state.theme', ctx), 'system', '云端系统模式应作为主题偏好保存');
 
+ctx.window.ChronosCloud = {
+  hasSession: () => true,
+  sessionUser: () => ({ email: 'android@example.com', nickname: 'Android' }),
+  init: hooks => { ctx.cloudHooks = hooks; },
+  queueState: next => { ctx.cloudQueued = next; }
+};
+ctx.initCloudSync();
+ctx.applyCloudState({ theme: 'dark', days: {}, template: [], user: null }, true);
+assert.equal(vm.runInContext('state.user?.email', ctx), 'android@example.com', 'a cloud document cannot log the local account out');
+assert.equal(Object.hasOwn(ctx.cloudHooks.get(), 'user'), false, 'account identity must not seed cloud business data');
+ctx.queueCloudSync();
+assert.equal(Object.hasOwn(ctx.cloudQueued, 'user'), false, 'account identity must not be queued');
+
 console.log('✓ 主题模式：系统跟随、即时响应、手动覆盖与原生状态栏联动');

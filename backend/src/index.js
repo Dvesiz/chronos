@@ -191,7 +191,7 @@ async function appendEventWithCas(env, user, event, expectedRevision = null) {
       .bind(user.id, event.eventId).first();
     if (ledgerEntry) {
       if (ledgerEntry.payload_hash !== payloadHash) throw new Error('idempotency_key_reused');
-      return { state, headSeq: document.head_seq, revision: document.revision, serverSeq: ledgerEntry.server_seq, duplicate: true };
+      return { state, headSeq: document.head_seq, revision: document.revision, serverSeq: ledgerEntry.server_seq, eventRevision: ledgerEntry.revision, duplicate: true };
     }
     // revision 是业务版本门禁；旧客户端没有 baseRevision 时退回 baseSeq。
     const clientRevision = expectedRevision === null
@@ -285,9 +285,9 @@ async function syncEvents(request, env, user) {
   let state = compactState(DEFAULT_STATE);
   let headSeq = 0;
   let revision = 0;
-  if (events.length) {
-    const document = await env.DB.prepare('SELECT revision,head_seq FROM sync_documents WHERE user_id=?').bind(user.id).first();
-    revision = Number(document?.revision || 0);
+  let expectedRevision = data.baseRevision ?? null;
+  if (expectedRevision !== null && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)) {
+    return error('base_revision_invalid', 400);
   }
   for (const event of events) {
     const checked = validateEvent(event);
@@ -300,7 +300,10 @@ async function syncEvents(request, env, user) {
       break;
     }
     try {
-      const result = await appendEventWithCas(env, user, event, revision);
+      if (expectedRevision === null) expectedRevision = event.baseRevision ?? event.baseSeq;
+      const result = await appendEventWithCas(env, user, event, expectedRevision);
+      // A duplicate can advance the batch only across its own commit, not across other devices' writes.
+      if (!result.duplicate || result.eventRevision === expectedRevision + 1) expectedRevision += 1;
       state = result.state;
       headSeq = result.headSeq;
       revision = result.revision ?? revision + 1;

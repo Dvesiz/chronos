@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import worker from '../src/index.js';
+import { signToken } from '../src/crypto.js';
 
 function env(overrides = {}) {
   return { APP_ORIGIN: 'https://dvesiz.github.io/chronos', JWT_SECRET: 'test-secret', RESEND_API_KEY: 'test-key', RESEND_FROM_EMAIL: 'system@example.com', ...overrides };
@@ -20,6 +23,59 @@ function feedbackDb() {
     }
   };
 }
+
+test('sync accepts current batches and their retries but rejects a stale device write', async () => {
+  const sql = new DatabaseSync(':memory:');
+  try {
+    const migrations = new URL('../migrations/', import.meta.url);
+    for (const name of readdirSync(migrations).filter(name => name.endsWith('.sql')).sort()) {
+      sql.exec(readFileSync(new URL(name, migrations), 'utf8'));
+    }
+    sql.exec(`INSERT INTO users (id,email,created_at,updated_at) VALUES ('user','u@example.com',1,1);
+      INSERT INTO sessions (id,user_id,device_id,refresh_hash,expires_at,created_at,last_seen_at)
+      VALUES ('session','user','web','hash',9999999999999,1,1);
+      INSERT INTO sync_documents (user_id,state_json,head_seq,revision,updated_at)
+      VALUES ('user','{}',10,0,1);`);
+    const db = {
+      prepare(query) {
+        const stmt = sql.prepare(query);
+        return { bind(...args) {
+          return { first: async () => stmt.get(...args), run: async () => ({ meta: stmt.run(...args) }) };
+        } };
+      },
+      async batch(statements) {
+        sql.exec('BEGIN');
+        try {
+          const result = [];
+          for (const stmt of statements) result.push(await stmt.run());
+          sql.exec('COMMIT');
+          return result;
+        } catch (err) { sql.exec('ROLLBACK'); throw err; }
+      }
+    };
+    const config = env({ DB: db });
+    const jwt = await signToken({ sub: 'user', sid: 'session', exp: Math.floor(Date.now() / 1000) + 60 }, config.JWT_SECRET);
+    const event = (eventId, value, deviceId = 'web') => ({ eventId, deviceId, baseSeq: 10, baseRevision: 0, ops: [{ op: 'set', path: ['theme'], value }] });
+    const post = async events => {
+      const res = await worker.fetch(new Request('https://api.example/v1/sync/events', {
+        method: 'POST', headers: { authorization: `Bearer ${jwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ protocolVersion: 2, accountScope: 'user', baseRevision: 0, events })
+      }), config);
+      assert.equal(res.status, 200);
+      return res.json();
+    };
+    const web = [event('w1', 'light'), event('w2', 'dark')];
+    assert.equal((await post(web.slice(0, 1))).revision, 1);
+    assert.equal((await post(web)).revision, 2, 'a duplicate prefix advances by business revision, not event sequence');
+    const retry = await post(web);
+    assert.equal(retry.revision, 2);
+    assert.ok(retry.results.every(item => item.duplicate));
+    const stale = await post([web[0], event('a1', 'light', 'android')]);
+    assert.equal(stale.results[1].error, 'stale_revision');
+    assert.equal(stale.revision, 2);
+    assert.equal(stale.state.theme, 'dark');
+  } finally { sql.close(); }
+});
 
 test('returns health with allowed CORS origin', async () => {
   const response = await worker.fetch(new Request('https://api.example/health', { headers: { Origin: 'https://dvesiz.github.io/chronos' } }), env());

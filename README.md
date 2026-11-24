@@ -11,14 +11,14 @@
 为学习、工作与长期目标打造的本地优先时间管理应用。用计划确定方向，用专注完成当下，用复盘看见长期变化。
 
 <p>
-  <a href="https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.13.apk"><strong>下载 Android APK</strong></a>
+  <a href="https://github.com/Dvesiz/chronos/releases/download/v2.7.14/Chronos-2.7.14.apk"><strong>下载 Android APK</strong></a>
   ·
   <a href="https://dvesiz.github.io/chronos/app/"><strong>在线体验</strong></a>
   ·
   <a href="https://dvesiz.github.io/chronos/"><strong>产品官网</strong></a>
 </p>
 
-[![Version](https://img.shields.io/badge/version-2.7.13-FF5A1F?style=flat-square)](https://github.com/Dvesiz/chronos/releases/tag/v2.7.13)
+[![Version](https://img.shields.io/badge/version-2.7.14-FF5A1F?style=flat-square)](https://github.com/Dvesiz/chronos/releases/tag/v2.7.14)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://github.com/Dvesiz/chronos/releases/latest)
 [![Pages](https://img.shields.io/github/actions/workflow/status/Dvesiz/chronos/pages.yml?branch=main&label=GitHub%20Pages&style=flat-square)](https://github.com/Dvesiz/chronos/actions/workflows/pages.yml)
 [![Release](https://img.shields.io/github/actions/workflow/status/Dvesiz/chronos/release.yml?branch=main&label=release&style=flat-square)](https://github.com/Dvesiz/chronos/actions/workflows/release.yml)
@@ -103,7 +103,7 @@ Chronos 不只是一个待办清单。它把一天组织成可执行的时间段
 
 ### Android APK
 
-[下载 Chronos 2.7.13](https://github.com/Dvesiz/chronos/releases/latest/download/Chronos-2.7.13.apk) · [查看全部 Releases](https://github.com/Dvesiz/chronos/releases)
+[下载 Chronos 2.7.14](https://github.com/Dvesiz/chronos/releases/download/v2.7.14/Chronos-2.7.14.apk) · [查看全部 Releases](https://github.com/Dvesiz/chronos/releases)
 
 Android 8.0 及以上可用。APK 不依赖 Gradle，安装后即可使用。首次从文件安装时，按系统提示允许当前文件管理器安装未知来源应用即可。
 

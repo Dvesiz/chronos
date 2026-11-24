@@ -11,7 +11,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-function createHarness(fetchImpl, { session = true } = {}) {
+function createHarness(fetchImpl, { session = true, indexedDB } = {}) {
   const values = new Map();
   const intervals = [];
   const listeners = {};
@@ -24,6 +24,7 @@ function createHarness(fetchImpl, { session = true } = {}) {
   const document = { hidden: false, addEventListener: (name, callback) => { listeners[`document:${name}`] = callback; } };
   const window = {
     CHRONOS_API_BASE: 'https://api.example',
+    indexedDB,
     localStorage,
     AbortController,
     crypto: { randomUUID: () => `event-${Math.random()}` },
@@ -42,6 +43,72 @@ function response(data, status = 200) {
 }
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('concurrent expired requests share a single rotating refresh', async () => {
+  const gate = deferred();
+  let refreshes = 0;
+  const harness = createHarness(async (url, options) => {
+    if (url.endsWith('/v1/auth/refresh')) {
+      const attempt = ++refreshes;
+      await gate.promise;
+      return attempt === 1 ? response({ accessToken: 'next', refreshToken: 'rotated' })
+        : response({ error: 'refresh_invalid' }, 401);
+    }
+    return options.headers.authorization === 'Bearer next'
+      ? response({ ok: true }) : response({ error: 'unauthorized' }, 401);
+  });
+  const results = Promise.allSettled([harness.api.devices(), harness.api.devices()]);
+  await tick();
+  gate.resolve();
+  assert.deepEqual((await results).map(result => result.status), ['fulfilled', 'fulfilled']);
+  assert.equal(refreshes, 1);
+});
+
+test('an acknowledged upload applies the server state before advancing past it', async () => {
+  let current = { task: 0, timer: false };
+  const harness = createHarness(async (url, options) => {
+    if (url.endsWith('/snapshot')) return response({ state: current, headSeq: 1, revision: 1 });
+    if (url.endsWith('/events')) {
+      const [event] = JSON.parse(options.body).events;
+      return response({ accepted: [{ eventId: event.eventId }], state: { task: 1, timer: true }, headSeq: 3, revision: 3 });
+    }
+    return response({ ok: true });
+  });
+  harness.api.init({ get: () => current, apply: next => { current = next; } });
+  await tick();
+  current.task = 1;
+  harness.api.queueState(current);
+  await tick();
+  assert.equal(current.task, 1);
+  assert.equal(current.timer, true, 'the remote edit cannot be skipped just because the upload advanced the cursor');
+});
+
+test('startup waits for IndexedDB edits before applying a cloud snapshot', async () => {
+  const opening = {};
+  const read = {};
+  const applied = [];
+  let current = { local: 1 };
+  const harness = createHarness(async (url, options) => {
+    if (url.endsWith('/snapshot')) return response({ state: { remote: 1 }, headSeq: 2, revision: 2 });
+    if (url.endsWith('/events')) {
+      const [event] = JSON.parse(options.body).events;
+      return response({ accepted: [{ eventId: event.eventId }], state: { remote: 1, local: 1 }, headSeq: 3, revision: 3 });
+    }
+    return response({ ok: true });
+  }, { indexedDB: { open: () => opening } });
+  harness.api.init({ get: () => current, apply: next => { current = next; applied.push(next); } });
+  await tick();
+  const beforeHydration = current.local;
+  opening.result = { transaction: mode => ({ objectStore: () => ({ getAll: () => read }) }) };
+  opening.onsuccess();
+  await tick();
+  read.result = [{ eventId: 'offline', deviceId: 'd', ops: [{ op: 'set', path: ['local'], value: 1 }] }];
+  read.onsuccess();
+  await tick();
+  assert.equal(beforeHydration, 1, 'startup cannot show a cloud-only snapshot before queue recovery');
+  assert.ok(applied.length && applied.every(next => next.local === 1));
+  assert.equal(current.remote, 1);
+});
 
 test('starts continuous polling after login during the current app session', async () => {
   let current = { value: 0 };
@@ -202,27 +269,36 @@ test('rebases a task field edit without erasing a remote running timer', async (
 
 test('flushes events queued while another upload is in flight', async () => {
   const firstUpload = deferred();
-  let postCount = 0;
+  const posts = [];
+  let current = { value: 0, note: '' };
   const harness = createHarness(async (url, options = {}) => {
     if (String(url).includes('/v1/sync/snapshot')) return response({ state: {}, headSeq: 0 });
     if (String(url).includes('/v1/sync/events')) {
-      postCount++;
       const event = JSON.parse(options.body).events[0];
-      if (postCount === 1) await firstUpload.promise;
-      return response({ accepted: [{ eventId: event.eventId }], headSeq: postCount, state: {} });
+      posts.push(event);
+      if (posts.length === 1) await firstUpload.promise;
+      const state = posts.length === 1 ? { value: 1, note: '', remote: true } : { value: 2, note: '', remote: true };
+      return response({ accepted: [{ eventId: event.eventId }], headSeq: posts.length, state });
     }
-    throw new Error(`unexpected request ${url}`);
+    return response({ ok: true });
   });
-  harness.api.init({ get: () => ({}), apply: () => {} });
+  harness.api.init({ get: () => current, apply: next => { current = next; } });
   await tick();
-  harness.api.queueState({ value: 1 });
+  current.value = 1;
+  harness.api.queueState(current);
   await tick();
-  assert.equal(postCount, 1);
-  harness.api.queueState({ value: 2 });
+  assert.equal(posts.length, 1);
+  current.value = 2;
+  harness.api.queueState(current);
+  current.note = 'not saved yet';
   firstUpload.resolve();
   await tick();
   await tick();
-  assert.equal(postCount, 2, 'queued event should upload after the active request finishes');
+  assert.equal(posts.length, 2, 'queued event should upload after the active request finishes');
+  assert.equal(posts[1].ops[0].value, 2);
+  assert.equal(current.value, 2);
+  assert.equal(current.note, 'not saved yet');
+  assert.equal(current.remote, true);
 });
 
 test('manual sync forces a snapshot when the local head cursor is stale', async () => {
