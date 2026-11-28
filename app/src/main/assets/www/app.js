@@ -201,8 +201,7 @@ function initCloudSync() {
   if (window.ChronosCloud.hasSession()) state.user = cloudAccount();
   window.ChronosCloud.init({
     get: cloudState,
-    apply: applyCloudState,
-    getLocalRevision: () => localRevision()
+    apply: applyCloudState
   });
 }
 
@@ -274,7 +273,12 @@ function normalizeState(s) {
   Object.keys(s.days).forEach(k => {
     const rec = s.days[k];
     if (!rec || typeof rec !== 'object' || Array.isArray(rec)) { delete s.days[k]; return; }
-    if (!Array.isArray(rec.tasks)) rec.tasks = [];
+    if (!Array.isArray(rec.tasks)) {
+      const tasks = rec.tasks && typeof rec.tasks === 'object' ? rec.tasks : {};
+      rec.tasks = Object.entries(tasks)
+        .filter(([key, task]) => key.startsWith('@id:') && task && typeof task.id === 'string' && key === '@id:' + task.id)
+        .map(([, task]) => task);
+    }
     rec.tasks = rec.tasks.filter(t => t && typeof t === 'object' && isFinite(t.start) && isFinite(t.end));
     if (!Array.isArray(rec.partialFocus)) rec.partialFocus = [];
   });

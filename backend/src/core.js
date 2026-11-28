@@ -122,7 +122,8 @@ export function validateEvent(event) {
 
 function getParent(root, path, create) {
   let current = root;
-  for (const segment of path) {
+  for (let offset = 0; offset < path.length - 1; offset++) {
+    const segment = path[offset];
     if (!current || typeof current !== 'object') return null;
     if (Array.isArray(current)) {
       const index = arrayIndex(current, segment);
@@ -131,7 +132,8 @@ function getParent(root, path, create) {
     } else {
       if (!(segment in current)) {
         if (!create) return null;
-        current[segment] = {};
+        const next = path[offset + 1];
+        current[segment] = ARRAY_ID_KEYS.includes(segment) && next?.startsWith('@id:') ? [] : {};
       }
       current = current[segment];
     }
@@ -196,7 +198,7 @@ function mergeArrayById(base, incoming) {
 
 function setAt(root, path, value) {
   if (!path.length) return clone(value);
-  const parent = getParent(root, path.slice(0, -1), true);
+  const parent = getParent(root, path, true);
   if (!parent) return root;
   const key = path[path.length - 1];
   if (Array.isArray(parent) && key.startsWith('@id:')) {
@@ -218,7 +220,7 @@ function setAt(root, path, value) {
 
 function removeAt(root, path) {
   if (!path.length) return {};
-  const parent = getParent(root, path.slice(0, -1), false);
+  const parent = getParent(root, path, false);
   if (!parent) return root;
   const key = path[path.length - 1];
   if (Array.isArray(parent)) {

@@ -159,9 +159,11 @@ test('replace_forbidden 只标记冲突，不删除本地事件', async () => {
   assert.ok(!legacy.some(item => item.eventId === 'replace-event'), '已迁移到账号队列的事件不得留在旧全局键中重复上传');
 });
 
-test('Tombstone 在 rebase 后仍随事件保留', () => {
-  assert.match(CLIENT, /deleteEntities[\s\S]{0,250}rebase|rebase[\s\S]{0,250}deleteEntities/, 'rebase 必须重建删除元数据');
-  assert.match(CLIENT, /deleteEntities[\s\S]{0,250}compact|compact[\s\S]{0,250}deleteEntities/, '压缩必须保留删除元数据');
+test('Tombstone 在 rebase 和压缩后仍随事件保留', () => {
+  const rebase = CLIENT.slice(CLIENT.indexOf('async function rebaseQueue('), CLIENT.indexOf('function loginReady('));
+  const compact = CLIENT.slice(CLIENT.indexOf('function compactQueue('), CLIENT.indexOf('function headSeq('));
+  assert.match(rebase, /mergeDeleteEntities\(pending[\s\S]*deleteEntities: deleted/, 'rebase 必须重建删除元数据');
+  assert.match(compact, /mergeDeleteEntities\(state\.queue\)[\s\S]*deleteEntities:/, '压缩必须保留删除元数据');
 });
 
 test('服务端校验删除实体的结构与数量', () => {

@@ -11,14 +11,14 @@
 A local-first time management app for study, work, and long-term goals. Plan your day, focus on the current block, and review your progress over time.
 
 <p>
-  <a href="https://github.com/Dvesiz/chronos/releases/download/v2.7.14/Chronos-2.7.14.apk"><strong>Download Android APK</strong></a>
+  <a href="https://github.com/Dvesiz/chronos/releases/download/v2.7.15/Chronos-2.7.15.apk"><strong>Download Android APK</strong></a>
   ·
   <a href="https://dvesiz.github.io/chronos/app/"><strong>Try in your browser</strong></a>
   ·
   <a href="https://dvesiz.github.io/chronos/"><strong>Product website</strong></a>
 </p>
 
-[![Version](https://img.shields.io/badge/version-2.7.14-FF5A1F?style=flat-square)](https://github.com/Dvesiz/chronos/releases/tag/v2.7.14)
+[![Version](https://img.shields.io/badge/version-2.7.15-FF5A1F?style=flat-square)](https://github.com/Dvesiz/chronos/releases/tag/v2.7.15)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://github.com/Dvesiz/chronos/releases/latest)
 [![Pages](https://img.shields.io/github/actions/workflow/status/Dvesiz/chronos/pages.yml?branch=main&label=GitHub%20Pages&style=flat-square)](https://github.com/Dvesiz/chronos/actions/workflows/pages.yml)
 [![Release](https://img.shields.io/github/actions/workflow/status/Dvesiz/chronos/release.yml?branch=main&label=release&style=flat-square)](https://github.com/Dvesiz/chronos/actions/workflows/release.yml)
@@ -101,7 +101,7 @@ The browser app shares the APK's static UI and core logic. Install the Android A
 
 ### Android APK
 
-[Download Chronos 2.7.14](https://github.com/Dvesiz/chronos/releases/download/v2.7.14/Chronos-2.7.14.apk) · [All releases](https://github.com/Dvesiz/chronos/releases)
+[Download Chronos 2.7.15](https://github.com/Dvesiz/chronos/releases/download/v2.7.15/Chronos-2.7.15.apk) · [All releases](https://github.com/Dvesiz/chronos/releases)
 
 Android 8.0 or later is required. The APK is built without Gradle. When installing it from a file for the first time, allow your file manager to install unknown apps when Android prompts you.
 
@@ -210,6 +210,7 @@ The app is built with native Java and WebView, without Gradle or a frontend fram
 
 | Version | Highlights |
 |:---|:---|
+| **2.7.15** | Completes sign-in as soon as the code is verified and retries first sync in the background. Fixes session renewal after temporary failures, preserves local edits during sync, and recovers legacy task lists. |
 | **2.7.13** | Prevents stale startup state from replacing a running cloud timer; syncs task fields by stable ID; removes page headlines and adds system-following themes. |
 | **2.7.12** | Forces snapshot reconciliation when the local sync cursor is stale, including manual sync, resume, and network recovery. |
 | **2.7.10** | Fixes startup sync baselines and adds visible sync status with a manual sync action. |

@@ -165,8 +165,14 @@ async function refresh(request, env) {
   const tokenHash = await sha256(String(data.refreshToken || ''));
   const row = await env.DB.prepare('SELECT s.*,u.email,u.nickname,u.avatar,u.avatar_data FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.refresh_hash=? AND s.revoked_at IS NULL AND s.expires_at>?').bind(tokenHash, now()).first();
   if (!row) return error('refresh_invalid', 401, '登录已失效，请重新登录');
-  await env.DB.prepare('UPDATE sessions SET revoked_at=?,last_seen_at=? WHERE id=?').bind(now(), now(), row.id).run();
-  return json(await createSession({ id: row.user_id, email: row.email, nickname: row.nickname, avatar: row.avatar, avatarData: row.avatar_data || '' }, row.device_id, env));
+  const refreshToken = randomId(32);
+  const refreshHash = await sha256(refreshToken);
+  const current = now();
+  const accessToken = await signToken({ sub: row.user_id, sid: row.id, exp: Math.floor(current / 1000) + ACCESS_TTL }, jwtSecret(env));
+  const updated = await env.DB.prepare('UPDATE sessions SET refresh_hash=?,expires_at=?,last_seen_at=? WHERE id=? AND refresh_hash=? AND revoked_at IS NULL AND expires_at>?')
+    .bind(refreshHash, current + REFRESH_TTL * 1000, current, row.id, tokenHash, now()).run();
+  if (updated.meta.changes !== 1) return error('refresh_invalid', 401, '登录已失效，请重新登录');
+  return json({ accessToken, refreshToken, expiresIn: ACCESS_TTL, user: { id: row.user_id, email: row.email, nickname: row.nickname, avatar: row.avatar, avatarData: row.avatar_data || '' } });
 }
 
 async function appendEventWithCas(env, user, event, expectedRevision = null) {

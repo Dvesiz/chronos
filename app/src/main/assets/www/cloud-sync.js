@@ -6,6 +6,7 @@
   // 版本号统一来自 cloud-config.js（与 AndroidManifest 的 versionName 同源）
   var APP_VERSION = String(global.CHRONOS_APP_VERSION || 'dev');
   var SESSION_KEY = 'chronos.cloud.session.v1';
+  var LOGIN_SYNC_KEY = 'chronos.cloud.login-sync.v1';
   var QUEUE_KEY = 'chronos.cloud.queue.v1';
   var ACK_KEY = 'chronos.cloud.acknowledged.v1';
   var DEVICE_KEY = 'chronos.cloud.device.v1';
@@ -123,7 +124,7 @@
           var req = db.transaction('outbox', 'readonly').objectStore('outbox').getAll();
           req.onsuccess = function () {
             var rows = reviveRetryableEvents((req.result || []).filter(function (event) { return eventScope(event) === normalized; }));
-            if (rows.length) {
+            if (rows.length && currentQueueScope() === normalized) {
               state.queue = mergeQueues(state.queue, rows);
               writeQueueLocal(normalized, state.queue);
             }
@@ -159,8 +160,8 @@
     retryTimer: null,
     lastError: null,
     lastSyncAt: 0,
-    getLocalRevision: function () { return 0; },
-    initialSyncInFlight: false
+    loginSync: null,
+    sessionGeneration: 0
   };
 
   function clone(value) {
@@ -171,8 +172,10 @@
     var beforeDays = before && before.days || {};
     var afterDays = after && after.days || {};
     Object.keys(beforeDays).forEach(function (date) {
-      var oldTasks = beforeDays[date] && beforeDays[date].tasks || [];
-      var newIds = new Set((afterDays[date] && afterDays[date].tasks || []).map(function (t) { return t.id; }));
+      var oldTasks = beforeDays[date] && beforeDays[date].tasks;
+      var newDay = afterDays[date];
+      if (!Array.isArray(oldTasks) || (newDay && !Array.isArray(newDay.tasks))) return;
+      var newIds = new Set((newDay ? newDay.tasks : []).filter(Boolean).map(function (t) { return t.id; }));
       oldTasks.forEach(function (task) {
         if (task && task.id && !newIds.has(task.id)) out.push({ entityType: 'task', entityId: task.id });
       });
@@ -205,6 +208,13 @@
   function adoptQueueScope() {
     var scope = currentQueueScope();
     state.queue = state.queue.filter(function (event) { return eventScope(event) === scope; });
+  }
+  function isCurrentSync(generation) {
+    return state.loggedIn && state.sessionGeneration === generation && currentQueueScope() === accountScope();
+  }
+  function queueStatus() {
+    if (state.queue.some(function (event) { return event.status === 'conflict' || event.status === 'rejected'; })) return 'conflict';
+    return state.queue.length ? 'pending' : 'idle';
   }
   function eligibleQueue() {
     var scope = currentQueueScope();
@@ -479,7 +489,8 @@
   }
   async function flush() {
     var pending = eligibleQueue();
-    if (!API_BASE || !state.loggedIn || state.syncing || state.initialSyncInFlight || !pending.length || state.queueHydrated === false) return;
+    var generation = state.sessionGeneration;
+    if (!API_BASE || !isCurrentSync(generation) || state.syncing || state.pulling || state.loginSync || !pending.length || state.queueHydrated === false) return;
     state.syncing = true;
     state.syncStatus = 'uploading';
     var uploaded = false;
@@ -496,6 +507,7 @@
         })
       })
       });
+      if (!isCurrentSync(generation)) return;
       var accepted = {};
       var resultHasStaleRevision = false;
       if (Array.isArray(result.results)) {
@@ -524,6 +536,7 @@
         (result.accepted || []).forEach(function (item) { accepted[item.eventId] = true; });
       }
       await withQueueWriteLock(function () {
+        if (!isCurrentSync(generation)) return;
         state.queue = state.queue.filter(function (event) { return !accepted[event.eventId]; });
         persistQueue();
         setHeadSeq(result.headSeq || headSeq());
@@ -543,7 +556,8 @@
         }
         setAcknowledged(result.state || state.queuedState);
       });
-      if (result.headSeq != null && accepted && Object.keys(accepted).length) {
+      if (!isCurrentSync(generation)) return;
+      if (result.headSeq != null && Object.keys(accepted).length) {
         request('/v1/sync/ack', { method: 'POST', body: JSON.stringify({ deviceId: deviceId(), ackServerSeq: result.headSeq, appVersion: APP_VERSION, protocolVersion: 2 }) }).catch(function () {});
       }
       uploaded = true;
@@ -558,6 +572,7 @@
         ? 'conflict' : (state.queue.length ? 'pending' : 'idle');
       notifyTabs();
     } catch (e) {
+      if (!isCurrentSync(generation)) return;
       // 服务端拒绝整份 replace：说明队列里是旧版逻辑留下的破坏性事件。
       // 直接丢弃这些事件并拉取云端，绝不再重试（否则会一直顶着云端状态）。
       if (e && e.code === 'stale_revision') {
@@ -591,47 +606,37 @@
     }
   }
   async function pullLatest(forceSnapshot) {
-    if (!API_BASE || !state.loggedIn || !state.booted || state.initialSyncInFlight || state.pulling || state.syncing) return;
+    var generation = state.sessionGeneration;
+    if (!API_BASE || !isCurrentSync(generation) || !state.booted || state.pulling || state.syncing) return;
+    if (state.loginSync) return syncAfterLogin(state.loginSync);
     state.pulling = true;
     state.syncStatus = 'pulling';
-    var localRevisionAtStart = Number(state.getLocalRevision() || 0);
+    var readyToUpload = false;
     try {
       var head = await request('/v1/sync/head');
-      if (state.syncing) return;
+      if (!isCurrentSync(generation)) return;
       var remoteSeq = Number(head && head.headSeq || 0);
-      // 没有 acknowledged snapshot 时，即使 headSeq 相等也必须拉一次快照，
-      // 否则离线队列压缩会错误退回 queuedState 作为云端基线。
-      if (!forceSnapshot && remoteSeq <= headSeq() && acknowledgedState()) { await flush(); return; }
-      var remote = await request('/v1/sync/snapshot');
-      if (!remote || !remote.state) return;
-      remoteSeq = Number(remote.headSeq || remoteSeq);
-      setHeadSeq(remoteSeq);
-      setRevision(remote.revision == null ? revision() : remote.revision);
-      setAcknowledged(remote.state);
-      if (remoteSeq >= 0) request('/v1/sync/ack', { method: 'POST', body: JSON.stringify({ deviceId: deviceId(), ackServerSeq: remoteSeq, appVersion: APP_VERSION, protocolVersion: PROTOCOL_VERSION }) }).catch(function () {});
-      if (Number(state.getLocalRevision() || 0) !== localRevisionAtStart && !state.queue.length) {
-        var raced = diff(remote.state, state.get());
-        if (raced.length) state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: currentQueueScope(), baseSeq: remoteSeq, baseRevision: revision(), ops: raced, deleteEntities: collectDeletedEntities(remote.state, state.get()), queuedAt: Date.now(), clientAt: Date.now() });
-        state.queuedState = clone(state.get());
-        persistQueue();
-        state.syncStatus = 'pending';
-        await flush();
-      } else if (eligibleQueue().length || state.queue.some(function (event) { return event.status === 'conflict' || event.status === 'rejected'; })) {
-        await rebaseQueue(remote.state, remoteSeq);
-        await flush();
-      } else {
-        applyRemote(remote.state, 'poll');
+      if (forceSnapshot || remoteSeq > headSeq() || !acknowledgedState()) {
+        var remote = await request('/v1/sync/snapshot');
+        if (!isCurrentSync(generation)) return;
+        if (!remote || !isObject(remote.state)) throw new Error('cloud_request_failed');
+        remoteSeq = Number(remote.headSeq == null ? remoteSeq : remote.headSeq);
+        await rebaseQueue(remote.state, remoteSeq, generation, 'poll', remote.revision);
+        if (!isCurrentSync(generation)) return;
+        request('/v1/sync/ack', { method: 'POST', body: JSON.stringify({ deviceId: deviceId(), ackServerSeq: remoteSeq, appVersion: APP_VERSION, protocolVersion: PROTOCOL_VERSION }) }).catch(function () {});
       }
-      if (!state.lastError) {
-        state.lastSyncAt = Date.now();
-        state.syncStatus = state.queue.length ? 'pending' : 'idle';
-      }
+      state.lastError = null;
+      state.lastSyncAt = Date.now();
+      state.syncStatus = queueStatus();
+      readyToUpload = true;
     } catch (e) {
+      if (!isCurrentSync(generation)) return;
       state.syncStatus = e && (e.code === 'cloud_timeout' || e.code === 'cloud_network') ? 'retrying' : 'failed';
       state.lastError = e && e.code ? String(e.code) : 'cloud_request_failed';
     } finally {
       state.pulling = false;
     }
+    if (readyToUpload) await flush();
   }
   function applyLocalOps(value, ops) {
     var root = clone(value) || {};
@@ -651,7 +656,10 @@
           if (index < 0 || !parent[index] || typeof parent[index] !== 'object') return;
           parent = parent[index];
         } else {
-          if (!parent[key] || typeof parent[key] !== 'object') parent[key] = {};
+          if (!parent[key] || typeof parent[key] !== 'object') {
+            var keyedList = (key === 'tasks' || key === 'partialFocus') && op.path[i + 1].indexOf('@id:') === 0;
+            parent[key] = keyedList ? [] : {};
+          }
           parent = parent[key];
         }
       }
@@ -684,8 +692,12 @@
    *  2. 云端为空   → 本地有数据才上传（这是唯一允许全量上传的时机），
    *                  否则什么都不做。
    */
-  async function rebaseQueue(remoteState, remoteSeq) {
+  async function rebaseQueue(remoteState, remoteSeq, generation, reason, remoteRevision) {
     return withQueueWriteLock(function () {
+      if (!isCurrentSync(generation)) return;
+      setHeadSeq(remoteSeq);
+      if (remoteRevision != null) setRevision(remoteRevision);
+      setAcknowledged(remoteState);
       var pending = eligibleQueue();
       if (remoteSeq > 0 && pending.some(function (event) {
         return (event.ops || []).some(function (op) { return op.op === 'replace' && (!op.path || !op.path.length); });
@@ -696,65 +708,96 @@
       }
       var merged = clone(remoteState) || {};
       pending.forEach(function (event) { merged = applyLocalOps(merged, event.ops); });
+      var visible = state.get();
+      merged = applyLocalOps(merged, diff(state.queuedState, visible));
+      var deleted = mergeDeleteEntities(pending.concat({ deleteEntities: collectDeletedEntities(state.queuedState, visible) }));
       var rebasedOps = diff(remoteState, merged);
       var preserved = state.queue.filter(function (event) { return pending.indexOf(event) < 0; });
-      state.queue = preserved.concat(rebasedOps.length ? [{
+      state.queue = preserved.concat(rebasedOps.length || deleted.length ? [{
         eventId: randomId(), deviceId: deviceId(), accountScope: currentQueueScope(), baseSeq: remoteSeq, baseRevision: revision(),
-        ops: rebasedOps, deleteEntities: mergeDeleteEntities(pending), queuedAt: Date.now(), clientAt: Date.now()
+        ops: rebasedOps, deleteEntities: deleted, queuedAt: Date.now(), clientAt: Date.now()
       }] : []);
       state.queuedState = clone(merged);
       persistQueue();
-      applyRemote(merged, 'rebase');
+      applyRemote(merged, pending.length ? 'rebase' : reason);
       return merged;
     });
   }
 
-  async function loginReady(auth, localState) {
-    if (!API_BASE || !auth) return;
-    await state.queueReady;
+  function loginReady(auth) {
     var previousScope = currentQueueScope();
-    write(SESSION_KEY, auth);
-    var nextScope = accountScope();
+    var nextScope = normalizeScope(auth.user && (auth.user.id || auth.user.email));
+    localStorage.setItem(scopedKey(LOGIN_SYNC_KEY, nextScope), '1');
+    localStorage.setItem(SESSION_KEY, JSON.stringify(auth));
+    state.sessionGeneration++;
     if (nextScope !== previousScope) {
-      var currentQueue = state.queue;
-      var carry = currentQueue.filter(function (event) { return eventScope(event) === nextScope; });
-      var remain = currentQueue.filter(function (event) { return eventScope(event) !== nextScope; });
-      persistQueueForScope(previousScope, remain);
       state.queueScope = nextScope;
-      state.queue = mergeQueues(readQueueForScope(nextScope), carry);
+      state.queue = readQueueForScope(nextScope);
       state.queueHydrated = false;
-      state.queueReady = loadQueueFromIndexedDb(nextScope).then(function () { state.queueHydrated = true; });
-      await state.queueReady;
+      var queueReady = loadQueueFromIndexedDb(nextScope).then(function () {
+        if (state.queueReady === queueReady) state.queueHydrated = true;
+      });
+      state.queueReady = queueReady;
     }
     state.loggedIn = true;
+    state.queuedState = clone(state.get());
+    state.loginSync = { running: false, seed: true };
     startPolling();
-    state.queuedState = clone(localState);
+    syncAfterLogin(state.loginSync);
+  }
 
-    var remote = await request('/v1/sync/snapshot');
-    var hasRemote = Number(remote.headSeq || 0) > 0;
-
-    if (hasRemote) {
-      setHeadSeq(remote.headSeq || 0);
-      setRevision(remote.revision == null ? revision() : remote.revision);
-      setAcknowledged(remote.state);
-      if (state.queue.length) await rebaseQueue(remote.state, remote.headSeq || 0);
-      else applyRemote(remote.state, 'login');
-      flush();
+  async function syncAfterLogin(login) {
+    if (login.running) return;
+    login.running = true;
+    state.syncStatus = 'pulling';
+    var generation = state.sessionGeneration;
+    try {
+      await state.queueReady;
+      if (!isCurrentSync(generation) || state.loginSync !== login) return;
+      var remote = await request('/v1/sync/snapshot');
+      if (!isCurrentSync(generation) || state.loginSync !== login) return;
+      if (!remote || !isObject(remote.state)) throw new Error('cloud_request_failed');
+      var remoteSeq = Number(remote.headSeq || 0);
+      if (remoteSeq > 0) {
+        await rebaseQueue(remote.state, remoteSeq, generation, login.seed ? 'login' : 'boot', remote.revision);
+      } else {
+        await withQueueWriteLock(function () {
+          if (!isCurrentSync(generation)) return;
+          setHeadSeq(0);
+          setRevision(remote.revision || 0);
+          setAcknowledged(remote.state);
+          var localState = state.get();
+          var hasLocal = localState && (
+            (localState.days && Object.keys(localState.days).length) ||
+            (localState.reviews && Object.keys(localState.reviews).length) ||
+            (localState.template && localState.template.length)
+          );
+          var pending = eligibleQueue();
+          if (login.seed && hasLocal) {
+            var seed = clone(localState);
+            pending.forEach(function (event) { seed = applyLocalOps(seed, event.ops); });
+            seed = applyLocalOps(seed, diff(state.queuedState, localState));
+            state.queue = state.queue.filter(function (event) { return !pending.includes(event); });
+            state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: currentQueueScope(), baseSeq: 0, baseRevision: revision(), ops: [{ op: 'replace', path: [], value: seed }], deleteEntities: mergeDeleteEntities(pending), queuedAt: Date.now(), clientAt: Date.now() });
+          }
+          persistQueue();
+        });
+      }
+      if (!isCurrentSync(generation) || state.loginSync !== login) return;
+      localStorage.removeItem(scopedKey(LOGIN_SYNC_KEY, currentQueueScope()));
+      state.loginSync = null;
+      state.lastError = null;
+      state.lastSyncAt = Date.now();
+      if (state.syncStatus === 'pulling') state.syncStatus = queueStatus();
+    } catch (e) {
+      if (isCurrentSync(generation) && state.loginSync === login) {
+        state.lastError = e && e.code || 'cloud_request_failed';
+        state.syncStatus = state.lastError === 'cloud_network' || state.lastError === 'cloud_timeout' ? 'retrying' : 'failed';
+      }
       return;
+    } finally {
+      login.running = false;
     }
-
-    // 云端为空：只在这时把本地数据抬上去
-    var hasLocal = !!(localState && (
-      (localState.days && Object.keys(localState.days).length) ||
-      (localState.reviews && Object.keys(localState.reviews).length) ||
-      (localState.template && localState.template.length)
-    ));
-    var pending = eligibleQueue();
-    if (!pending.length && hasLocal) {
-      state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: currentQueueScope(), baseSeq: 0, baseRevision: revision(), ops: [{ op: 'replace', path: [], value: clone(localState) }], queuedAt: Date.now(), clientAt: Date.now() });
-    }
-    setHeadSeq(0);
-    persistQueue();
     await flush();
   }
 
@@ -768,49 +811,56 @@
     sendCode: async function (email) { return request('/v1/auth/send-code', { method: 'POST', body: JSON.stringify({ email }) }).then(function () { return { mode: 'sent' }; }); },
     verify: async function (email, code) {
       var result = await request('/v1/auth/verify', { method: 'POST', body: JSON.stringify({ email: email, code: code, deviceId: deviceId() }) });
-      await loginReady(result, state.get());
+      loginReady(result);
       return result;
     },
     logout: async function () {
-      try { if (read(SESSION_KEY, null)) await request('/v1/auth/logout', { method: 'POST', body: '{}' }); } catch (e) {}
-      localStorage.removeItem(SESSION_KEY);
       state.loggedIn = false;
+      state.loginSync = null;
       if (state.pollTimer) {
         global.clearInterval(state.pollTimer);
         state.pollTimer = null;
       }
       // 退出只清理会话和轮询，保留业务数据及待同步队列，供下次登录继续上传。
-      persistQueue();
+      if (state.queueHydrated) persistQueue();
+      try { if (read(SESSION_KEY, null)) await request('/v1/auth/logout', { method: 'POST', body: '{}' }); } catch (e) {}
+      localStorage.removeItem(SESSION_KEY);
     },
     updateProfile: async function (profile) { return request('/v1/account/profile', { method: 'PATCH', body: JSON.stringify(profile) }); },
     feedback: async function (body) { return request('/v1/feedback', { method: 'POST', body: JSON.stringify({ body: body, appVersion: APP_VERSION }) }); },
     latest: async function () { return request('/v1/app/latest'); },
     queueState: function (nextState) {
-      if (!API_BASE || !state.loggedIn || !state.booted) return;
+      var generation = state.sessionGeneration;
+      if (!API_BASE || !isCurrentSync(generation) || !state.booted) return;
       var next = clone(nextState);
       var before = state.queuedState || next;
       var ops = diff(before, next);
       var deleteEntities = collectDeletedEntities(before, next);
       if (!ops.length && !deleteEntities.length) return;
       state.queuedState = next;
+      var scope = currentQueueScope();
+      var event = { eventId: randomId(), deviceId: deviceId(), accountScope: scope, baseSeq: headSeq(), baseRevision: revision(), ops: ops, deleteEntities: deleteEntities, status: 'pending', queuedAt: Date.now(), clientAt: Date.now() };
       withQueueWriteLock(function () {
-        state.queue.push({ eventId: randomId(), deviceId: deviceId(), accountScope: currentQueueScope(), baseSeq: headSeq(), baseRevision: revision(), ops: ops, deleteEntities: deleteEntities, status: 'pending', queuedAt: Date.now(), clientAt: Date.now() });
+        if (scope !== currentQueueScope()) {
+          writeQueueLocal(scope, mergeQueues(readQueueForScope(scope), [event]));
+          return;
+        }
+        state.queue.push(event);
         compactQueue();
         persistQueue();
-      }).then(flush).catch(function () { state.syncStatus = 'failed'; });
+      }).then(flush).catch(function () { if (isCurrentSync(generation)) state.syncStatus = 'failed'; });
     },
     init: function (hooks) {
       state.get = hooks.get;
       state.apply = hooks.apply;
-      state.getLocalRevision = hooks.getLocalRevision || function () { return 0; };
       state.queueScope = accountScope();
       state.queue = readQueueForScope(state.queueScope);
       adoptQueueScope();
       state.queueHydrated = false;
-      state.queueReady = loadQueueFromIndexedDb(state.queueScope).then(function () {
-        state.queueHydrated = true;
-        if (state.loggedIn && !state.initialSyncInFlight) flush();
+      var queueReady = loadQueueFromIndexedDb(state.queueScope).then(function () {
+        if (state.queueReady === queueReady) state.queueHydrated = true;
       });
+      state.queueReady = queueReady;
       state.queuedState = clone(state.get());
       // 新会话尚无待同步队列时，先固定启动时状态作为本地基线；
       // 远程快照返回后会覆盖为 acknowledged snapshot。已有队列则必须等待远程对账。
@@ -818,31 +868,9 @@
       state.loggedIn = !!read(SESSION_KEY, null);
       state.booted = true;
       if (state.loggedIn) {
-        state.initialSyncInFlight = true;
-        state.syncStatus = 'pulling';
-        // Recover persisted edits before deciding whether a snapshot can replace local state.
-        state.queueReady.then(function () { return request('/v1/sync/snapshot'); }).then(async function (remote) {
-          if (remote && remote.state) {
-            setHeadSeq(remote.headSeq || 0);
-            setRevision(remote.revision == null ? revision() : remote.revision);
-            setAcknowledged(remote.state);
-            if (Number(remote.headSeq || 0) > 0) {
-              if (state.queue.length) await rebaseQueue(remote.state, remote.headSeq || 0);
-              else applyRemote(remote.state, 'boot');
-            }
-          }
-          state.lastError = null;
-          state.lastSyncAt = Date.now();
-          state.syncStatus = state.queue.length ? 'pending' : 'idle';
-          state.initialSyncInFlight = false;
-          flush();
-        }).catch(function (e) {
-          state.lastError = e && e.code ? String(e.code) : 'cloud_request_failed';
-          state.syncStatus = e && (e.code === 'cloud_timeout' || e.code === 'cloud_network') ? 'retrying' : 'failed';
-          state.initialSyncInFlight = false;
-          flush();
-        });
+        state.loginSync = { running: false, seed: !!read(scopedKey(LOGIN_SYNC_KEY, currentQueueScope()), false) };
         startPolling();
+        syncAfterLogin(state.loginSync);
       }
     },
     isSyncing: function () { return state.syncing || state.pulling; },

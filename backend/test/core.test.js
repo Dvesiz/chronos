@@ -82,6 +82,13 @@ test('adds and removes array elements by stable id paths', () => {
   assert.deepEqual(removed.days.d.tasks.map(task => task.id), ['t2']);
 });
 
+test('按 ID 新增任务时，缺失的任务列表应初始化成数组', () => {
+  const next = applyOps({ days: { d: {} } }, [
+    { op: 'set', path: ['days', 'd', 'tasks', '@id:t1'], value: { id: 't1', status: 'todo' } }
+  ]);
+  assert.deepEqual(next.days.d.tasks, [{ id: 't1', status: 'todo' }]);
+});
+
 test('creates deterministic operations for changed state', () => {
   const before = { days: {}, settings: { theme: 'light', remind: true } };
   const after = { days: { '2026-10-29': { tasks: [] } }, settings: { theme: 'dark', remind: true } };

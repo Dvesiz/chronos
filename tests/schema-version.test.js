@@ -12,4 +12,9 @@ const once = ctx.normalizeState(input);
 assert.equal(once.schemaVersion, 3, 'normalized state must carry current schemaVersion 3');
 const twice = ctx.normalizeState(once);
 assert.deepEqual(JSON.parse(JSON.stringify(twice)), JSON.parse(JSON.stringify(once)), 'schema migration must be idempotent');
+const legacy = ctx.normalizeState({ template: [], days: { '2026-11-01': { tasks: {
+  '@id:old': { id: 'old', start: 540, end: 600, status: 'done' }
+} } } });
+assert.equal(legacy.days['2026-11-01'].tasks.length, 1, '旧版按 ID 保存的任务不能被清空');
+assert.equal(legacy.days['2026-11-01'].tasks[0].status, 'done');
 console.log('✓ schemaVersion：旧状态幂等迁移到当前版本');

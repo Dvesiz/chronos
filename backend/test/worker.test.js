@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import worker from '../src/index.js';
-import { signToken } from '../src/crypto.js';
+import { sha256, signToken } from '../src/crypto.js';
 
 function env(overrides = {}) {
   return { APP_ORIGIN: 'https://dvesiz.github.io/chronos', JWT_SECRET: 'test-secret', RESEND_API_KEY: 'test-key', RESEND_FROM_EMAIL: 'system@example.com', ...overrides };
@@ -74,6 +74,53 @@ test('sync accepts current batches and their retries but rejects a stale device 
     assert.equal(stale.results[1].error, 'stale_revision');
     assert.equal(stale.revision, 2);
     assert.equal(stale.state.theme, 'dark');
+  } finally { sql.close(); }
+});
+
+test('续期写入暂时失败后，现有会话仍可重试续期', async () => {
+  const sql = new DatabaseSync(':memory:');
+  try {
+    for (const migration of ['0001_initial.sql', '0002_avatar_data.sql', '0003_revision.sql']) {
+      sql.exec(readFileSync(new URL(`../migrations/${migration}`, import.meta.url), 'utf8'));
+    }
+    sql.exec("INSERT INTO users (id,email,created_at,updated_at) VALUES ('user','u@example.com',1,1)");
+    const token = 'local-test-refresh';
+    sql.prepare('INSERT INTO sessions (id,user_id,device_id,refresh_hash,expires_at,created_at,last_seen_at) VALUES (?,?,?,?,?,?,?)')
+      .run('session', 'user', 'android', await sha256(token), Date.now() + 60000, 1, 1);
+    let failWrite = true;
+    const config = env({ DB: {
+      prepare(query) {
+        const stmt = sql.prepare(query);
+        return { bind(...args) {
+          return {
+            first: async () => stmt.get(...args),
+            run: async () => {
+              if (failWrite && /INSERT INTO sessions|UPDATE sessions SET refresh_hash/.test(query)) throw new Error('续期写入暂时失败');
+              return { meta: stmt.run(...args) };
+            }
+          };
+        } };
+      }
+    } });
+    const refresh = refreshToken => worker.fetch(new Request('https://api.example/v1/auth/refresh', {
+      method: 'POST', body: JSON.stringify({ refreshToken })
+    }), config);
+    const head = accessToken => worker.fetch(new Request('https://api.example/v1/sync/head', {
+      headers: { authorization: `Bearer ${accessToken}` }
+    }), config);
+    const oldAccess = await signToken({ sub: 'user', sid: 'session', exp: Math.floor(Date.now() / 1000) + 60 }, config.JWT_SECRET);
+    assert.equal((await refresh(token)).status, 500);
+    assert.equal((await head(oldAccess)).status, 200);
+    failWrite = false;
+    const retried = await refresh(token);
+    assert.equal(retried.status, 200);
+    const session = await retried.json();
+    assert.notEqual(session.refreshToken, token);
+    assert.equal((await refresh(token)).status, 401);
+    const authorized = await worker.fetch(new Request('https://api.example/v1/sync/head', {
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    }), config);
+    assert.equal(authorized.status, 200);
   } finally { sql.close(); }
 });
 
